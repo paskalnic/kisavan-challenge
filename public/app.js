@@ -205,9 +205,11 @@ $("next-btn").onclick = async () => {
 
 $("lead-form").addEventListener("submit", submitLead);
 $("refresh-btn").onclick = loadLeaderboard;
-$("show-board-btn").onclick = () =>
+$("show-board-btn").onclick = async () => {
+  show("leaderboard-card");
   $("leaderboard-card").scrollIntoView({ behavior: "smooth" });
+};
 
-loadQuiz().then(loadLeaderboard).catch((error) => {
+loadQuiz().catch((error) => {
   $("subtitle").textContent = error.message;
 });
