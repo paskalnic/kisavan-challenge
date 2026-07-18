@@ -1,9 +1,4 @@
-import {
-  json,
-  randomAlias,
-  supabaseRequest,
-  validUuid
-} from "../_common.js";
+import { json, randomAlias, supabaseRequest, validUuid } from "../_common.js";
 
 export async function onRequestPost(context) {
   try {
@@ -39,7 +34,6 @@ export async function onRequestPost(context) {
     );
 
     let score = 0;
-
     for (const question of questions) {
       if (answerMap.get(question.id) === question.correct_index) {
         score++;
@@ -54,9 +48,7 @@ export async function onRequestPost(context) {
       "attempts?select=id",
       {
         method: "POST",
-        headers: {
-          Prefer: "return=representation"
-        },
+        headers: { Prefer: "return=representation" },
         body: JSON.stringify({
           quiz_id: body.quizId,
           alias,
@@ -72,7 +64,6 @@ export async function onRequestPost(context) {
 
     const answerRows = questions.map((question) => {
       const selectedIndex = answerMap.get(question.id);
-
       return {
         attempt_id: attemptId,
         question_id: question.id,
@@ -98,11 +89,6 @@ export async function onRequestPost(context) {
       201
     );
   } catch (error) {
-    return json(
-      {
-        error: error.message || "Erreur serveur."
-      },
-      500
-    );
+    return json({ error: error.message || "Erreur serveur." }, 500);
   }
 }
