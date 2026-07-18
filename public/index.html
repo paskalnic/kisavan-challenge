@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Challenge Ki'Savan</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <main class="container">
+    <header>
+      <p class="eyebrow">Challenge hebdomadaire</p>
+      <h1>Challenge Ki'Savan</h1>
+      <p id="subtitle">Chargement du quiz…</p>
+    </header>
+
+    <section id="start-card" class="card">
+      <h2>Prêt(e) ?</h2>
+      <p>Quelques questions, une seule tentative sur cet appareil. Aucun nom ni e-mail demandé.</p>
+      <label>Niveau
+        <select id="level"><option value="5e">5e</option></select>
+      </label>
+      <label>Matière
+        <select id="subject"><option value="maths">Mathématiques</option></select>
+      </label>
+      <button id="start-btn">Commencer</button>
+      <p class="small">Un surnom aléatoire sera généré pour le classement de la semaine.</p>
+    </section>
+
+    <section id="quiz-card" class="card hidden">
+      <div class="progress-row"><span id="progress"></span><span id="timer">00:00</span></div>
+      <h2 id="question-text"></h2>
+      <div id="answers" class="answers"></div>
+      <button id="next-btn" disabled>Question suivante</button>
+    </section>
+
+    <section id="result-card" class="card hidden">
+      <h2>Résultat</h2>
+      <p id="result-text"></p>
+      <p id="alias-text" class="alias"></p>
+      <button id="show-board-btn">Voir le classement</button>
+    </section>
+
+    <section id="leaderboard-card" class="card">
+      <div class="board-title"><h2>Classement de la semaine</h2><button id="refresh-btn" class="secondary">Actualiser</button></div>
+      <ol id="leaderboard"></ol>
+      <p id="board-empty" class="small hidden">Aucune participation pour le moment.</p>
+    </section>
+
+    <footer>
+      <p>Ki'Savan — Apprendre, progresser, gagner en autonomie.</p>
+      <p class="small">Résultat ludique, pas une évaluation scolaire officielle.</p>
+    </footer>
+  </main>
+  <script src="/app.js" defer></script>
+</body>
+</html>
