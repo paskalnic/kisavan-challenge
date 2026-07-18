@@ -31,6 +31,10 @@
       <div class="progress-row"><span id="progress"></span><span id="timer">00:00</span></div>
       <h2 id="question-text"></h2>
       <div id="answers" class="answers"></div>
+      <div id="explanation-card" class="explanation-card hidden">
+        <h3>Explications</h3>
+        <p id="explanation-text"></p>
+      </div>
       <button id="next-btn" disabled>Question suivante</button>
     </section>
 
@@ -104,6 +108,6 @@
       <p class="small">Résultat ludique, pas une évaluation scolaire officielle.</p>
     </footer>
   </main>
-  <script src="/app.js" defer></script>
+  <script type="module" src="/app.js"></script>
 </body>
 </html>

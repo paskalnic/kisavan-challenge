@@ -1,18 +1,6 @@
-const state = {
-  quizId: null,
-  questions: [],
-  answers: {},
-  index: 0,
-  startedAt: null,
-  timerId: null,
-  attemptId: null,
-  attemptToken: null
-};
+import { initApp } from "./app.module.js";
 
-const $ = (id) => document.getElementById(id);
-const attemptKey = () => `kisavan_attempt_${state.quizId}`;
-
-async function api(path, options = {}) {
+initApp();
   const response = await fetch(path, {
     headers: {
       "Content-Type": "application/json",
@@ -28,8 +16,26 @@ async function api(path, options = {}) {
   return data;
 }
 
-const show = (id) => $(id).classList.remove("hidden");
-const hide = (id) => $(id).classList.add("hidden");
+const show = (id) => {
+  const el = $(id);
+  el.classList.remove("hidden");
+  if (el.classList.contains("card")) {
+    el.classList.remove("animate-in");
+    requestAnimationFrame(() => el.classList.add("animate-in"));
+  }
+};
+const hide = (id) => {
+  const el = $(id);
+  el.classList.add("hidden");
+  el.classList.remove("animate-in");
+};
+
+function animateQuizCard() {
+  const card = $("quiz-card");
+  card.classList.remove("card-pulse");
+  void card.offsetWidth;
+  card.classList.add("card-pulse");
+}
 
 async function loadQuiz() {
   const level = $("level").value;
@@ -66,6 +72,8 @@ function renderQuestion() {
 
     button.onclick = () => {
       state.answers[question.id] = index;
+      button.classList.add("pop");
+      setTimeout(() => button.classList.remove("pop"), 280);
       renderQuestion();
     };
 
@@ -76,6 +84,8 @@ function renderQuestion() {
     state.index === state.questions.length - 1
       ? "Envoyer mes réponses"
       : "Question suivante";
+
+  animateQuizCard();
 }
 
 function startTimer() {
