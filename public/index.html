@@ -52,7 +52,16 @@
 
           <label for="parent-phone">Téléphone du parent, facultatif</label>
           <input id="parent-phone" name="parentPhone" type="tel" maxlength="30" autocomplete="tel" />
-
+          <label for="postal-code">Code postal, facultatif</label>
+          <input
+           id="postal-code"
+           name="postalCode"
+           type="text"
+           inputmode="numeric"
+           maxlength="5"
+           pattern="[0-9]{5}"
+           placeholder="Exemple : 75015"
+         />
           <label for="child-level">Classe de l'enfant</label>
           <select id="child-level" name="childLevel">
             <option value="">Choisir</option>
