@@ -153,6 +153,7 @@ async function submitLead(event) {
         parentName: $("parent-name").value,
         parentEmail: $("parent-email").value,
         parentPhone,
+        postalCode: $("postal-code").value.trim(),
         childLevel: $("child-level").value,
         mainDifficulty: $("main-difficulty").value,
         callbackRequested,
