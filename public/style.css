@@ -11,3 +11,5 @@ button.secondary{width:auto;background:#e5e7eb;color:#111827}.answers{display:gr
 .progress-row,.board-title{display:flex;justify-content:space-between;gap:12px;align-items:center}.alias{font-size:1.25rem;font-weight:800}
 .small{font-size:.9rem;color:#64748b}ol{padding-left:28px}li{padding:8px 0;border-bottom:1px solid #eef2f7}
 footer{text-align:center;margin-top:28px;color:#475569}
+input,textarea{width:100%;margin-top:6px;padding:12px 14px;border-radius:12px;border:1px solid #cbd5e1;font:inherit;background:#fff;color:#111827}
+textarea{resize:vertical}.lead-box{margin:22px 0;padding:18px;border:1px solid #e5e7eb;border-radius:14px;background:#f8fafc}.lead-box h3{margin-top:0}.check-row{display:flex;align-items:flex-start;gap:10px;font-weight:500}.check-row input{width:auto;margin:3px 0 0;flex:0 0 auto}.check-row span{line-height:1.4}.full-width{width:100%}#lead-message{font-weight:700}

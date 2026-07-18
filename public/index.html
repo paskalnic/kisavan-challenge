@@ -11,12 +11,12 @@
     <header>
       <p class="eyebrow">Challenge hebdomadaire</p>
       <h1>Challenge Ki'Savan</h1>
-      <p id="subtitle">Chargement du quiz…</p>
+      <p id="subtitle">Chargement du quiz...</p>
     </header>
 
     <section id="start-card" class="card">
       <h2>Prêt(e) ?</h2>
-      <p>Quelques questions, une seule tentative sur cet appareil. Aucun nom ni e-mail demandé.</p>
+      <p>Quelques questions, une seule tentative sur cet appareil. Aucun nom ni e-mail demandé pour participer.</p>
       <label>Niveau
         <select id="level"><option value="5e">5e</option></select>
       </label>
@@ -38,7 +38,50 @@
       <h2>Résultat</h2>
       <p id="result-text"></p>
       <p id="alias-text" class="alias"></p>
-      <button id="show-board-btn">Voir le classement</button>
+
+      <div class="lead-box">
+        <h3>Recevoir un bilan gratuit</h3>
+        <p>Le parent peut laisser ses coordonnées pour recevoir un retour sur les difficultés observées et demander un rappel.</p>
+
+        <form id="lead-form">
+          <label for="parent-name">Prénom du parent *</label>
+          <input id="parent-name" name="parentName" maxlength="80" autocomplete="given-name" required />
+
+          <label for="parent-email">E-mail du parent *</label>
+          <input id="parent-email" name="parentEmail" type="email" maxlength="254" autocomplete="email" required />
+
+          <label for="parent-phone">Téléphone du parent, facultatif</label>
+          <input id="parent-phone" name="parentPhone" type="tel" maxlength="30" autocomplete="tel" />
+
+          <label for="child-level">Classe de l'enfant</label>
+          <select id="child-level" name="childLevel">
+            <option value="">Choisir</option>
+            <option value="6e">6e</option>
+            <option value="5e">5e</option>
+            <option value="4e">4e</option>
+            <option value="3e">3e</option>
+          </select>
+
+          <label for="main-difficulty">Difficulté principale, facultatif</label>
+          <textarea id="main-difficulty" name="mainDifficulty" maxlength="300" rows="3" placeholder="Exemple : fractions, calcul mental, manque de confiance..."></textarea>
+
+          <label class="check-row">
+            <input id="callback-requested" name="callbackRequested" type="checkbox" />
+            <span>Je souhaite être rappelé(e) pour parler du bilan.</span>
+          </label>
+
+          <label class="check-row">
+            <input id="email-consent" name="emailMarketingConsent" type="checkbox" />
+            <span>J'accepte de recevoir par e-mail des conseils et des offres de Ki'Savan.</span>
+          </label>
+
+          <button id="lead-submit" type="submit">Demander mon bilan gratuit</button>
+          <p id="lead-message" class="small" aria-live="polite"></p>
+          <p class="small">Les coordonnées sont utilisées pour répondre à la demande. Le consentement aux conseils et offres est facultatif.</p>
+        </form>
+      </div>
+
+      <button id="show-board-btn" class="secondary full-width">Voir le classement</button>
     </section>
 
     <section id="leaderboard-card" class="card">
@@ -48,7 +91,7 @@
     </section>
 
     <footer>
-      <p>Ki'Savan — Apprendre, progresser, gagner en autonomie.</p>
+      <p>Ki'Savan - Apprendre, progresser, gagner en autonomie.</p>
       <p class="small">Résultat ludique, pas une évaluation scolaire officielle.</p>
     </footer>
   </main>
