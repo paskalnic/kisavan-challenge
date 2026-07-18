@@ -44,4 +44,23 @@ describe("quiz API", () => {
     const body = await response.json();
     expect(body.error).toBe("Aucun quiz actif pour ce niveau.");
   });
+
+  it("calls supabaseRequest with the correct quizzes path", async () => {
+    const env = { SUPABASE_URL: "https://example.supabase.co" };
+
+    supabaseRequest
+      .mockResolvedValueOnce([
+        { id: "quiz-1", title: "Quiz 1", week_label: "Semaine 1", level: "5e", subject: "maths" }
+      ])
+      .mockResolvedValueOnce([]);
+
+    const request = new Request("https://example.com/api/quiz?level=5e&subject=maths");
+    await onRequestGet({ request, env });
+
+    expect(supabaseRequest).toHaveBeenNthCalledWith(
+      1,
+      env,
+      "quizzes?active=eq.true&level=eq.5e&subject=eq.maths&select=id,title,week_label,level,subject&limit=1"
+    );
+  });
 });
