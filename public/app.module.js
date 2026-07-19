@@ -1,7 +1,21 @@
-export const ACTIVE_QUIZ_SLUG = "francais-5e-diagnostic";
+export const ACTIVE_QUIZ_SLUG = "francais-5e-diagnostic-v2";
+
+const CTA_VARIANTS = {
+  A: {
+    kicker: "Pour progresser",
+    heading: "Obtenir de l’aide sur mes difficultés",
+    button: "Envoyer à un parent"
+  },
+  B: {
+    kicker: "Étape suivante",
+    heading: "Comprendre mes erreurs",
+    button: "Transmettre mon résultat"
+  }
+};
 
 export const state = {
   quizId: null,
+  quiz: null,
   questions: [],
   answers: {},
   index: 0,
@@ -11,7 +25,10 @@ export const state = {
   attemptToken: null,
   parentShareToken: null,
   parentMode: false,
-  sharedResult: null
+  sharedResult: null,
+  skillSummary: [],
+  sessionId: null,
+  ctaVariant: null
 };
 
 export const $ = (id) => document.getElementById(id);
@@ -41,8 +58,8 @@ export function setView(view) {
 export const show = (id) => {
   const element = $(id);
   if (!element) return;
-
   element.classList.remove("hidden");
+
   if (element.classList.contains("card")) {
     element.classList.remove("animate-in");
     const animate = window.requestAnimationFrame || ((callback) => callback());
@@ -53,7 +70,6 @@ export const show = (id) => {
 export const hide = (id) => {
   const element = $(id);
   if (!element) return;
-
   element.classList.add("hidden");
   element.classList.remove("animate-in");
 };
@@ -61,29 +77,72 @@ export const hide = (id) => {
 function setStatus(id, message, status = "") {
   const element = $(id);
   if (!element) return;
-
   element.textContent = message;
-  if (status) {
-    element.dataset.status = status;
-  } else {
-    delete element.dataset.status;
+  if (status) element.dataset.status = status;
+  else delete element.dataset.status;
+}
+
+function safeRandomId() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  return `session-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+export function getSessionId() {
+  if (state.sessionId) return state.sessionId;
+
+  const stored = localStorage.getItem("kisavan_session_id");
+  state.sessionId = stored || safeRandomId();
+  if (!stored) localStorage.setItem("kisavan_session_id", state.sessionId);
+  return state.sessionId;
+}
+
+export function getCtaVariant() {
+  if (state.ctaVariant) return state.ctaVariant;
+
+  const stored = localStorage.getItem("kisavan_cta_variant");
+  state.ctaVariant = ["A", "B"].includes(stored)
+    ? stored
+    : Math.random() < 0.5 ? "A" : "B";
+  localStorage.setItem("kisavan_cta_variant", state.ctaVariant);
+  return state.ctaVariant;
+}
+
+export function applyCtaVariant() {
+  const variant = CTA_VARIANTS[getCtaVariant()];
+  if ($("parent-action-kicker")) $("parent-action-kicker").textContent = variant.kicker;
+  if ($("parent-action-heading")) $("parent-action-heading").textContent = variant.heading;
+  if ($("share-parent-btn")) $("share-parent-btn").textContent = variant.button;
+}
+
+export async function trackEvent(eventName, metadata = {}) {
+  try {
+    await api("/api/event", {
+      method: "POST",
+      keepalive: true,
+      body: JSON.stringify({
+        eventName,
+        quizId: state.quizId,
+        attemptId: state.attemptId,
+        sessionId: getSessionId(),
+        ctaVariant: getCtaVariant(),
+        metadata
+      })
+    });
+  } catch {
+    // La mesure ne doit jamais bloquer le quiz.
   }
 }
 
 let audioContext;
 function getAudioContext() {
   if (typeof window === "undefined") return null;
-
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
   if (!AudioContextClass) return null;
 
   if (!audioContext) {
     audioContext = new AudioContextClass();
-    if (audioContext.state === "suspended") {
-      audioContext.resume().catch(() => {});
-    }
+    if (audioContext.state === "suspended") audioContext.resume().catch(() => {});
   }
-
   return audioContext;
 }
 
@@ -93,7 +152,6 @@ function playTone(frequency, duration = 0.14, type = "sine") {
 
   const oscillator = context.createOscillator();
   const gain = context.createGain();
-
   oscillator.type = type;
   oscillator.frequency.value = frequency;
   oscillator.connect(gain);
@@ -103,7 +161,6 @@ function playTone(frequency, duration = 0.14, type = "sine") {
   gain.gain.setValueAtTime(0.0001, now);
   gain.gain.exponentialRampToValueAtTime(0.18, now + 0.01);
   gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
-
   oscillator.start(now);
   oscillator.stop(now + duration + 0.02);
 }
@@ -120,7 +177,6 @@ export function playAnswerSound(isCorrect) {
 export function showExplanation() {
   const card = $("explanation-card");
   if (!card) return;
-
   card.open = false;
   card.classList.remove("hidden");
 }
@@ -128,11 +184,9 @@ export function showExplanation() {
 export function hideExplanation() {
   const card = $("explanation-card");
   if (!card) return;
-
   card.open = false;
   card.classList.add("hidden");
 }
-
 
 export function readStoredAttempt() {
   const rawValue = localStorage.getItem(attemptKey());
@@ -149,45 +203,107 @@ export function readStoredAttempt() {
       Number.isFinite(stored.total) &&
       Number.isFinite(stored.durationMs)
     ) {
-      return stored;
+      return {
+        ...stored,
+        skillSummary: Array.isArray(stored.skillSummary) ? stored.skillSummary : []
+      };
     }
   } catch {
-    // Ancienne version : la valeur contenait uniquement le jeton de tentative.
+    // Une ancienne valeur locale ne doit pas casser le chargement.
   }
 
   return null;
+}
+
+function splitSkillSummary(summary = []) {
+  const normalized = summary
+    .filter((skill) => skill && Number.isFinite(skill.correct) && Number.isFinite(skill.total))
+    .map((skill) => ({
+      ...skill,
+      percentage: Number.isFinite(skill.percentage)
+        ? skill.percentage
+        : Math.round((skill.correct / Math.max(skill.total, 1)) * 100)
+    }));
+
+  return {
+    strengths: [...normalized].sort((a, b) => b.percentage - a.percentage).slice(0, 2),
+    focus: [...normalized].sort((a, b) => a.percentage - b.percentage).slice(0, 2)
+  };
+}
+
+function renderSkillList(id, skills, emptyText) {
+  const container = $(id);
+  if (!container) return;
+  container.replaceChildren();
+
+  if (!skills.length) {
+    const item = document.createElement("li");
+    item.textContent = emptyText;
+    container.appendChild(item);
+    return;
+  }
+
+  for (const skill of skills) {
+    const item = document.createElement("li");
+    const label = document.createElement("span");
+    const score = document.createElement("strong");
+    label.textContent = skill.label;
+    score.textContent = `${skill.correct}/${skill.total}`;
+    item.append(label, score);
+    container.appendChild(item);
+  }
+}
+
+export function renderSkillSummary(summary, prefix) {
+  const { strengths, focus } = splitSkillSummary(summary);
+  renderSkillList(`${prefix}-strengths`, strengths, "Résultat global encourageant.");
+  renderSkillList(`${prefix}-focus`, focus, "Aucune difficulté prioritaire détectée.");
+}
+
+function resultEncouragement(score, total) {
+  const ratio = total ? score / total : 0;
+  if (ratio >= 0.8) return "Très bon résultat : quelques détails peuvent encore être consolidés.";
+  if (ratio >= 0.5) return "Tu as de bonnes bases. Le bilan montre maintenant où progresser en priorité.";
+  return "Ce résultat sert à repérer les notions à retravailler, pas à te juger.";
 }
 
 export function displayResult(result) {
   state.attemptId = result.attemptId;
   state.attemptToken = result.attemptToken;
   state.parentShareToken = null;
+  state.skillSummary = Array.isArray(result.skillSummary) ? result.skillSummary : [];
 
   hide("start-card");
   hide("quiz-card");
+  hide("parent-card");
+  hide("lead-card");
   show("result-card");
   setView("result");
 
-  $("result-text").textContent = `${result.score}/${result.total} bonnes réponses en ${Math.round(result.durationMs / 1000)} secondes.`;
-  $("alias-text").textContent = `Surnom : ${result.alias}`;
+  $("result-score-number").textContent = `${result.score}/${result.total}`;
+  $("result-text").textContent = resultEncouragement(result.score, result.total);
+  renderSkillSummary(state.skillSummary, "result");
+  applyCtaVariant();
 }
 
 export async function loadQuiz() {
   const data = await api(`/api/quiz?slug=${encodeURIComponent(ACTIVE_QUIZ_SLUG)}`);
 
   state.quizId = data.quiz.id;
+  state.quiz = data.quiz;
   state.questions = data.questions;
   state.answers = {};
   state.index = 0;
   $("subtitle").textContent = `${data.quiz.title} — ${data.quiz.week_label}`;
   setView("start");
+  applyCtaVariant();
+  void trackEvent("quiz_viewed", { slug: data.quiz.slug });
 
   const storedValue = localStorage.getItem(attemptKey());
   const storedAttempt = readStoredAttempt();
 
   if (storedAttempt) {
     displayResult(storedAttempt);
-    loadLeaderboard().catch(() => {});
     return;
   }
 
@@ -196,7 +312,7 @@ export async function loadQuiz() {
     $("start-btn").textContent = "Déjà participé sur cet appareil";
   } else {
     $("start-btn").disabled = false;
-    $("start-btn").textContent = "Commencer";
+    $("start-btn").textContent = "Commencer le diagnostic";
   }
 }
 
@@ -219,25 +335,21 @@ export function renderQuestion() {
     button.className = "answer";
     button.textContent = choice;
 
-    if (selectedIndex === index) {
-      button.classList.add("selected");
-    }
-
+    if (selectedIndex === index) button.classList.add("selected");
     if (hasAnswered && typeof correctIndex === "number") {
-      if (index === correctIndex) {
-        button.classList.add("correct");
-      } else if (index === selectedIndex) {
-        button.classList.add("incorrect");
-      }
+      if (index === correctIndex) button.classList.add("correct");
+      else if (index === selectedIndex) button.classList.add("incorrect");
     }
 
     button.onclick = () => {
-      if (hasAnswered) return;
-
+      if (state.answers[question.id] !== undefined) return;
       state.answers[question.id] = index;
       const isCorrect = typeof correctIndex === "number" && index === correctIndex;
       playAnswerSound(isCorrect);
-
+      void trackEvent("question_answered", {
+        position: state.index + 1,
+        skill_code: question.skill_code || null
+      });
       $("question-text").classList.add("question-pop");
       setTimeout(() => $("question-text").classList.remove("question-pop"), 280);
       renderQuestion();
@@ -256,10 +368,9 @@ export function renderQuestion() {
     hideExplanation();
   }
 
-  $("next-btn").textContent =
-    state.index === state.questions.length - 1
-      ? "Envoyer mes réponses"
-      : "Question suivante";
+  $("next-btn").textContent = state.index === state.questions.length - 1
+    ? "Voir mon diagnostic"
+    : "Question suivante";
 
   const scrollArea = document.querySelector(".question-scroll-area");
   if (scrollArea) scrollArea.scrollTop = 0;
@@ -285,11 +396,13 @@ export async function submitQuiz() {
       questionId: question.id,
       choiceIndex: state.answers[question.id]
     })),
-    durationMs: Date.now() - state.startedAt
+    durationMs: Date.now() - state.startedAt,
+    sessionId: getSessionId(),
+    ctaVariant: getCtaVariant()
   };
 
   $("next-btn").disabled = true;
-  $("next-btn").textContent = "Envoi...";
+  $("next-btn").textContent = "Analyse en cours...";
 
   try {
     const result = await api("/api/submit", {
@@ -303,35 +416,29 @@ export async function submitQuiz() {
       alias: result.alias,
       score: result.score,
       total: result.total,
-      durationMs: result.durationMs
+      durationMs: result.durationMs,
+      skillSummary: result.skillSummary
     };
 
     localStorage.setItem(attemptKey(), JSON.stringify(storedAttempt));
     displayResult(storedAttempt);
-
-    loadLeaderboard().catch(() => {
-      setStatus("board-empty", "Le classement est momentanément indisponible.", "error");
-    });
   } catch (error) {
-    setStatus("share-message", error.message, "error");
+    setStatus("quiz-message", error.message, "error");
     $("next-btn").disabled = false;
     $("next-btn").textContent = "Réessayer";
   }
 }
 
 export function buildChallengeUrl() {
-  return new URL(window.location.pathname || "/", window.location.origin).toString();
+  return new URL("/partage/challenge", window.location.origin).toString();
 }
 
 export function buildParentResultUrl(shareToken) {
-  const url = new URL(window.location.pathname || "/", window.location.origin);
-  url.searchParams.set("bilan", shareToken);
-  return url.toString();
+  return new URL(`/bilan/${encodeURIComponent(shareToken)}`, window.location.origin).toString();
 }
 
 export async function ensureParentShareToken() {
   if (state.parentShareToken) return state.parentShareToken;
-
   if (!state.attemptId || !state.attemptToken) {
     throw new Error("Participation introuvable. Termine d'abord le quiz.");
   }
@@ -341,7 +448,9 @@ export async function ensureParentShareToken() {
     body: JSON.stringify({
       attemptId: state.attemptId,
       attemptToken: state.attemptToken,
-      shareType: "parent"
+      shareType: "parent",
+      sessionId: getSessionId(),
+      ctaVariant: getCtaVariant()
     })
   });
 
@@ -362,13 +471,9 @@ export async function copyText(text) {
   textarea.style.opacity = "0";
   document.body.appendChild(textarea);
   textarea.select();
-
   const copied = typeof document.execCommand === "function" && document.execCommand("copy");
   textarea.remove();
-
-  if (!copied) {
-    throw new Error("Impossible de copier automatiquement le lien.");
-  }
+  if (!copied) throw new Error("Impossible de copier automatiquement le lien.");
 }
 
 export async function shareOrCopy({ title, text, url }) {
@@ -386,21 +491,26 @@ export async function shareOrCopy({ title, text, url }) {
 }
 
 export async function shareParentResult() {
-  setStatus("share-message", "Préparation du lien...", "");
+  setStatus("share-message", "Préparation du lien privé...", "");
   $("share-parent-btn").disabled = true;
+  void trackEvent("parent_share_clicked");
 
   try {
     const shareToken = await ensureParentShareToken();
+    if (typeof navigator.share === "function") void trackEvent("share_menu_opened", { target: "parent" });
+
     const result = await shareOrCopy({
-      title: "Bilan du challenge Ki'Savan",
-      text: "J'ai terminé le challenge Ki'Savan. Tu peux consulter mon résultat et demander mon bilan pédagogique.",
+      title: "Mon résultat Ki'Savan",
+      text: "J’ai terminé un quiz de français 5e. Peux-tu regarder mon résultat et les notions à retravailler ?",
       url: buildParentResultUrl(shareToken)
     });
 
     if (result === "copied") {
-      setStatus("share-message", "Lien du bilan copié. Tu peux maintenant l'envoyer à un parent.", "success");
+      setStatus("share-message", "Le lien privé a été copié. Il ne reste plus qu’à l’envoyer à un parent.", "success");
+      void trackEvent("parent_share_completed", { method: "copy_fallback" });
     } else if (result === "shared") {
-      setStatus("share-message", "Lien du bilan partagé.", "success");
+      setStatus("share-message", "Résultat transmis.", "success");
+      void trackEvent("parent_share_completed", { method: "native" });
     } else {
       setStatus("share-message", "Partage annulé.", "");
     }
@@ -413,18 +523,22 @@ export async function shareParentResult() {
 
 export async function shareChallenge() {
   $("share-challenge-btn").disabled = true;
+  void trackEvent("friend_share_clicked");
 
   try {
+    if (typeof navigator.share === "function") void trackEvent("share_menu_opened", { target: "friend" });
     const result = await shareOrCopy({
-      title: "Challenge Ki'Savan",
-      text: "J'ai fait le challenge Ki'Savan. À ton tour de relever le défi !",
+      title: "Challenge français 5e Ki'Savan",
+      text: "J’ai testé mon niveau en français 5e. À ton tour : peux-tu faire mieux ?",
       url: buildChallengeUrl()
     });
 
     if (result === "copied") {
       setStatus("share-message", "Lien du challenge copié.", "success");
+      void trackEvent("friend_share_completed", { method: "copy_fallback" });
     } else if (result === "shared") {
-      setStatus("share-message", "Challenge partagé.", "success");
+      setStatus("share-message", "Défi partagé.", "success");
+      void trackEvent("friend_share_completed", { method: "native" });
     } else {
       setStatus("share-message", "Partage annulé.", "");
     }
@@ -436,9 +550,9 @@ export async function shareChallenge() {
 }
 
 export function showLeadForm() {
-  $("lead-context-text").textContent = "Laissez vos coordonnées pour recevoir un retour personnalisé sur les réponses du quiz.";
+  $("lead-context-text").textContent = "Recevez l’analyse détaillée des réponses et les conseils prioritaires à travailler.";
   show("lead-card");
-
+  void trackEvent("lead_form_viewed", { source: state.parentMode ? "parent_share" : "direct_result" });
   const card = $("lead-card");
   if (card && typeof card.scrollIntoView === "function") {
     card.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -452,20 +566,35 @@ export async function loadSharedResult(shareToken) {
   state.parentShareToken = shareToken;
   state.sharedResult = data.result;
   state.attemptId = data.result.attemptId;
+  state.skillSummary = Array.isArray(data.result.skillSummary) ? data.result.skillSummary : [];
 
   hide("start-card");
   hide("quiz-card");
   hide("result-card");
-  hide("leaderboard-card");
   show("parent-card");
   show("lead-card");
   setView("parent");
 
-  $("subtitle").textContent = `${data.result.quiz.title} — ${data.result.quiz.weekLabel}`;
-  $("parent-result-title").textContent = `Résultat de ${data.result.alias}`;
-  $("parent-result-text").textContent = `${data.result.score}/${data.result.total} bonnes réponses en ${data.result.durationSeconds} secondes.`;
-  $("parent-result-context").textContent = `Niveau ${data.result.quiz.level} · ${data.result.quiz.subjectLabel}`;
-  $("lead-context-text").textContent = "Indiquez vos coordonnées pour recevoir le bilan associé à ce résultat.";
+  document.title = "Bilan pédagogique — Ki'Savan";
+  $("header-eyebrow").textContent = "Espace parents";
+  $("page-title").textContent = "Comprendre pour mieux progresser";
+  $("subtitle").textContent = `${data.result.quiz.title} · Niveau ${data.result.quiz.level}`;
+  $("parent-result-title").textContent = "Résultat transmis par votre enfant";
+  $("parent-result-score").textContent = `${data.result.score}/${data.result.total}`;
+  $("parent-result-context").textContent = `${data.result.quiz.subjectLabel} · ${data.result.durationSeconds} secondes`;
+  renderSkillSummary(state.skillSummary, "parent");
+  $("lead-context-text").textContent = "Indiquez votre prénom et votre e-mail pour recevoir l’analyse détaillée associée à ce résultat.";
+  void trackEvent("lead_form_viewed", { source: "parent_share" });
+}
+
+function appendAttemptCredentials(payload) {
+  if (state.parentMode && state.parentShareToken) {
+    payload.shareToken = state.parentShareToken;
+  } else {
+    payload.attemptId = state.attemptId;
+    payload.attemptToken = state.attemptToken;
+  }
+  return payload;
 }
 
 export async function submitLead(event) {
@@ -473,18 +602,8 @@ export async function submitLead(event) {
 
   const hasDirectAttempt = state.attemptId && state.attemptToken;
   const hasSharedAttempt = state.parentMode && state.parentShareToken;
-
   if (!hasDirectAttempt && !hasSharedAttempt) {
     setStatus("lead-message", "Participation introuvable. Rechargez le lien ou refaites le quiz.", "error");
-    return;
-  }
-
-  const callbackRequested = $("callback-requested").checked;
-  const parentPhone = $("parent-phone").value.trim();
-
-  if (callbackRequested && !parentPhone) {
-    setStatus("lead-message", "Ajoutez un numéro de téléphone pour demander un rappel.", "error");
-    $("parent-phone").focus();
     return;
   }
 
@@ -492,77 +611,74 @@ export async function submitLead(event) {
   $("lead-submit").textContent = "Enregistrement...";
   setStatus("lead-message", "", "");
 
-  const payload = {
+  const payload = appendAttemptCredentials({
+    mode: "lead",
     parentName: $("parent-name").value,
     parentEmail: $("parent-email").value,
-    parentPhone,
-    postalCode: $("postal-code").value.trim(),
-    callbackRequested,
-    emailMarketingConsent: $("email-consent").checked
-  };
+    mainConcern: $("main-concern").value,
+    emailMarketingConsent: $("email-consent").checked,
+    sessionId: getSessionId(),
+    ctaVariant: getCtaVariant()
+  });
 
-  if (hasSharedAttempt) {
-    payload.shareToken = state.parentShareToken;
-  } else {
-    payload.attemptId = state.attemptId;
-    payload.attemptToken = state.attemptToken;
-  }
-
-  let success = false;
   try {
-    await api("/api/lead", {
-      method: "POST",
-      body: JSON.stringify(payload)
-    });
-
-    success = true;
-    setStatus("lead-message", "Demande enregistrée. Le bilan sera envoyé à cette adresse e-mail.", "success");
-    $("lead-form").reset();
-    $("lead-submit").textContent = "Demande envoyée";
+    await api("/api/lead", { method: "POST", body: JSON.stringify(payload) });
+    $("lead-form").classList.add("hidden");
+    show("lead-success-panel");
+    setStatus("lead-message", "", "");
   } catch (error) {
     setStatus("lead-message", error.message, "error");
-  } finally {
-    if (!success) {
-      $("lead-submit").disabled = false;
-      $("lead-submit").textContent = "Recevoir mon bilan gratuit";
-    }
+    $("lead-submit").disabled = false;
+    $("lead-submit").textContent = "Recevoir l’analyse gratuite";
   }
 }
 
-export async function loadLeaderboard() {
-  if (!state.quizId) return;
+export async function submitCallbackRequest(event) {
+  event.preventDefault();
+  const phone = $("callback-phone").value.trim();
+  const preferredContactTime = $("preferred-contact-time").value;
 
-  const data = await api(`/api/leaderboard?quizId=${encodeURIComponent(state.quizId)}`);
-  const list = $("leaderboard");
-  list.replaceChildren();
-  $("board-empty").classList.toggle("hidden", data.entries.length > 0);
+  if (!phone) {
+    setStatus("callback-message", "Ajoutez votre numéro de téléphone.", "error");
+    return;
+  }
 
-  data.entries.forEach((entry) => {
-    const item = document.createElement("li");
-    item.textContent = `${entry.alias} — ${entry.score}/${entry.total} — ${entry.duration_seconds}s`;
-    list.appendChild(item);
+  $("callback-submit").disabled = true;
+  $("callback-submit").textContent = "Enregistrement...";
+
+  const payload = appendAttemptCredentials({
+    mode: "callback",
+    parentPhone: phone,
+    preferredContactTime,
+    sessionId: getSessionId(),
+    ctaVariant: getCtaVariant()
   });
+
+  try {
+    await api("/api/lead", { method: "POST", body: JSON.stringify(payload) });
+    $("callback-form").classList.add("hidden");
+    setStatus("callback-message", "Votre demande de rappel est enregistrée.", "success");
+  } catch (error) {
+    setStatus("callback-message", error.message, "error");
+    $("callback-submit").disabled = false;
+    $("callback-submit").textContent = "Demander un échange gratuit";
+  }
 }
 
 function bindEvents() {
-  $("start-btn").onclick = async () => {
-    try {
-      await loadQuiz();
-      if (localStorage.getItem(attemptKey())) return;
-
-      hide("start-card");
-      show("quiz-card");
-      setView("quiz");
-      renderQuestion();
-      startTimer();
-    } catch (error) {
-      $("subtitle").textContent = error.message;
-    }
+  $("start-btn").onclick = () => {
+    if (!state.questions.length || localStorage.getItem(attemptKey())) return;
+    hide("start-card");
+    show("quiz-card");
+    setView("quiz");
+    renderQuestion();
+    startTimer();
+    void trackEvent("quiz_started");
   };
 
   $("next-btn").onclick = async () => {
     if (state.index < state.questions.length - 1) {
-      state.index++;
+      state.index += 1;
       renderQuestion();
     } else {
       await submitQuiz();
@@ -570,30 +686,19 @@ function bindEvents() {
   };
 
   $("lead-form")?.addEventListener("submit", submitLead);
-
-  const shareParentButton = $("share-parent-btn");
-  if (shareParentButton) shareParentButton.onclick = shareParentResult;
-
-  const shareChallengeButton = $("share-challenge-btn");
-  if (shareChallengeButton) shareChallengeButton.onclick = shareChallenge;
-
-  const showLeadButton = $("show-lead-form-btn");
-  if (showLeadButton) showLeadButton.onclick = showLeadForm;
-
-  const refreshButton = $("refresh-btn");
-  if (refreshButton) refreshButton.onclick = () => loadLeaderboard().catch(() => {});
-
-  $("show-board-btn").onclick = async () => {
-    show("leaderboard-card");
-    await loadLeaderboard().catch(() => {});
-    const board = $("leaderboard-card");
-    if (board && typeof board.scrollIntoView === "function") {
-      board.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
+  $("callback-form")?.addEventListener("submit", submitCallbackRequest);
+  $("share-parent-btn").onclick = shareParentResult;
+  $("share-challenge-btn").onclick = shareChallenge;
+  $("show-lead-form-btn").onclick = showLeadForm;
+  $("skip-callback-btn").onclick = () => {
+    $("appointment-box").classList.add("hidden");
+    setStatus("callback-message", "Le bilan sera envoyé par e-mail.", "success");
   };
 }
 
 export function initApp() {
+  getSessionId();
+  getCtaVariant();
   bindEvents();
 
   const shareToken = new URLSearchParams(window.location.search).get("bilan");
@@ -604,8 +709,8 @@ export function initApp() {
       show("parent-card");
       setView("parent");
       $("parent-result-title").textContent = "Lien de bilan invalide";
-      $("parent-result-text").textContent = error.message;
-      $("parent-result-context").textContent = "Demandez un nouveau lien à la personne qui a réalisé le quiz.";
+      $("parent-result-score").textContent = "—";
+      $("parent-result-context").textContent = error.message;
     });
     return;
   }

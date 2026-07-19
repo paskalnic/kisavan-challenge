@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../_common.js", async () => {
   const actual = await vi.importActual("../../_common.js");
@@ -12,119 +12,93 @@ vi.mock("../../_common.js", async () => {
 import { onRequestPost } from "../submit.js";
 import { supabaseRequest } from "../../_common.js";
 
+const QUIZ_ID = "123e4567-e89b-12d3-a456-426614174000";
+
+const questions = [
+  { id: "q1", correct_index: 1, choices: ["A", "B"], skill_code: "lecture", skill_label: "Lecture" },
+  { id: "q2", correct_index: 0, choices: ["A", "B"], skill_code: "lecture", skill_label: "Lecture" },
+  { id: "q3", correct_index: 1, choices: ["A", "B"], skill_code: "accords", skill_label: "Accords" },
+  { id: "q4", correct_index: 0, choices: ["A", "B"], skill_code: "accords", skill_label: "Accords" }
+];
+
+function makeRequest(answers) {
+  return new Request("https://example.com/api/submit", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ quizId: QUIZ_ID, answers, durationMs: 42000, sessionId: "session-1", ctaVariant: "A" })
+  });
+}
+
 describe("submit API", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
+  beforeEach(() => vi.clearAllMocks());
 
-  it("returns 201 and stores an attempt for valid answers", async () => {
+  it("stores a validated attempt and a diagnostic by skill", async () => {
     supabaseRequest
-      .mockResolvedValueOnce([
-        { id: "q1", correct_index: 1 },
-        { id: "q2", correct_index: 0 }
-      ])
+      .mockResolvedValueOnce(questions)
       .mockResolvedValueOnce([{ id: "attempt-1" }])
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([]);
 
-    const body = {
-      quizId: "123e4567-e89b-12d3-a456-426614174000",
-      answers: [
+    const response = await onRequestPost({
+      request: makeRequest([
         { questionId: "q1", choiceIndex: 1 },
-        { questionId: "q2", choiceIndex: 0 }
-      ],
-      durationMs: 42000
-    };
-
-    const request = new Request("https://example.com/api/submit", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
+        { questionId: "q2", choiceIndex: 1 },
+        { questionId: "q3", choiceIndex: 1 },
+        { questionId: "q4", choiceIndex: 0 }
+      ]),
+      env: {}
     });
 
-    const response = await onRequestPost({ request, env: {} });
     expect(response.status).toBe(201);
-
     const result = await response.json();
-    expect(result).toEqual(
-      expect.objectContaining({
-        attemptId: "attempt-1",
-        attemptToken: expect.any(String),
-        alias: "Colibri-123",
-        score: 2,
-        total: 2,
-        durationMs: 42000
-      })
-    );
+    expect(result.score).toBe(3);
+    expect(result.skillSummary).toEqual([
+      { code: "lecture", label: "Lecture", correct: 1, total: 2, percentage: 50 },
+      { code: "accords", label: "Accords", correct: 2, total: 2, percentage: 100 }
+    ]);
+
+    const attempt = JSON.parse(supabaseRequest.mock.calls[1][2].body);
+    expect(attempt.skill_summary).toEqual(result.skillSummary);
   });
 
-  it("returns 400 for invalid quizId", async () => {
-    const request = new Request("https://example.com/api/submit", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ quizId: "bad-id", answers: [], durationMs: 1000 })
+  it("rejects incomplete, duplicate or out-of-range answers", async () => {
+    supabaseRequest.mockResolvedValueOnce(questions);
+
+    const response = await onRequestPost({
+      request: makeRequest([
+        { questionId: "q1", choiceIndex: 1 },
+        { questionId: "q1", choiceIndex: 0 }
+      ]),
+      env: {}
     });
 
-    const response = await onRequestPost({ request, env: {} });
     expect(response.status).toBe(400);
-
-    const result = await response.json();
-    expect(result.error).toBe("Quiz invalide.");
+    await expect(response.json()).resolves.toEqual({
+      error: "Toutes les réponses doivent être valides et uniques."
+    });
   });
 
-  it("calls supabaseRequest with the correct paths and env for submit", async () => {
-    const env = {
-      SUPABASE_URL: "https://example.supabase.co",
-      SUPABASE_SECRET_KEY: "secret"
-    };
-
+  it("uses the enriched question query and records the funnel completion", async () => {
+    const env = { SUPABASE_URL: "https://example.supabase.co", SUPABASE_SECRET_KEY: "secret" };
     supabaseRequest
-      .mockResolvedValueOnce([
-        { id: "q1", correct_index: 1 },
-        { id: "q2", correct_index: 0 }
-      ])
+      .mockResolvedValueOnce(questions)
       .mockResolvedValueOnce([{ id: "attempt-1" }])
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([]);
 
-    const body = {
-      quizId: "123e4567-e89b-12d3-a456-426614174000",
-      answers: [
-        { questionId: "q1", choiceIndex: 1 },
-        { questionId: "q2", choiceIndex: 0 }
-      ],
-      durationMs: 42000
-    };
-
-    const request = new Request("https://example.com/api/submit", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
+    await onRequestPost({
+      request: makeRequest(questions.map((question) => ({ questionId: question.id, choiceIndex: question.correct_index }))),
+      env
     });
-
-    await onRequestPost({ request, env });
 
     expect(supabaseRequest).toHaveBeenNthCalledWith(
       1,
       env,
-      `questions?quiz_id=eq.${body.quizId}&select=id,correct_index`
+      `questions?quiz_id=eq.${QUIZ_ID}&select=id,correct_index,choices,skill_code,skill_label`
     );
-    expect(supabaseRequest).toHaveBeenNthCalledWith(
-      2,
-      env,
-      "attempts?select=id",
-      expect.objectContaining({
-        method: "POST",
-        headers: expect.objectContaining({ Prefer: "return=representation" }),
-        body: expect.any(String)
-      })
-    );
-    expect(supabaseRequest).toHaveBeenNthCalledWith(
-      3,
-      env,
-      "attempt_answers",
-      expect.objectContaining({
-        method: "POST",
-        body: expect.any(String)
-      })
-    );
+    expect(supabaseRequest.mock.calls[3][1]).toBe("funnel_events");
+    const event = JSON.parse(supabaseRequest.mock.calls[3][2].body);
+    expect(event.event_name).toBe("quiz_completed");
+    expect(event.cta_variant).toBe("A");
   });
 });

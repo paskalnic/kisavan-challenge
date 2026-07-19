@@ -17,7 +17,7 @@ export async function onRequestGet(context) {
     const quiz = quizzes[0];
     const questions = await supabaseRequest(
       context.env,
-      `questions?quiz_id=eq.${quiz.id}&select=id,prompt,explanation,choices,position,correct_index&order=position.asc`
+      `questions?quiz_id=eq.${quiz.id}&select=id,prompt,explanation,choices,position,correct_index,skill_code,skill_label&order=position.asc`
     );
 
     return json({ quiz, questions });

@@ -27,7 +27,7 @@ export async function onRequestGet(context) {
     const share = shares[0];
     const attempts = await supabaseRequest(
       context.env,
-      `attempts?id=eq.${share.attempt_id}&select=id,quiz_id,alias,score,total,duration_ms&limit=1`
+      `attempts?id=eq.${share.attempt_id}&select=id,quiz_id,alias,score,total,duration_ms,skill_summary&limit=1`
     );
 
     if (!attempts?.length) {
@@ -45,23 +45,31 @@ export async function onRequestGet(context) {
     }
 
     const quiz = quizzes[0];
-
-    const trackingUpdate = supabaseRequest(
-      context.env,
-      `attempt_shares?id=eq.${share.id}`,
-      {
+    const now = new Date().toISOString();
+    const trackingUpdates = Promise.allSettled([
+      supabaseRequest(context.env, `attempt_shares?id=eq.${share.id}`, {
         method: "PATCH",
         body: JSON.stringify({
           open_count: Number(share.open_count || 0) + 1,
-          last_opened_at: new Date().toISOString()
+          last_opened_at: now
         })
-      }
-    ).catch(() => {});
+      }),
+      supabaseRequest(context.env, "funnel_events", {
+        method: "POST",
+        body: JSON.stringify({
+          event_name: "share_link_opened",
+          quiz_id: attempt.quiz_id,
+          attempt_id: attempt.id,
+          share_id: share.id,
+          metadata: {}
+        })
+      })
+    ]);
 
     if (typeof context.waitUntil === "function") {
-      context.waitUntil(trackingUpdate);
+      context.waitUntil(trackingUpdates);
     } else {
-      await trackingUpdate;
+      await trackingUpdates;
     }
 
     return json({
@@ -71,6 +79,7 @@ export async function onRequestGet(context) {
         score: attempt.score,
         total: attempt.total,
         durationSeconds: Math.round(attempt.duration_ms / 1000),
+        skillSummary: Array.isArray(attempt.skill_summary) ? attempt.skill_summary : [],
         quiz: {
           title: quiz.title,
           weekLabel: quiz.week_label,

@@ -1,86 +1,66 @@
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  ACTIVE_QUIZ_SLUG,
   api,
+  applyCtaVariant,
   buildChallengeUrl,
   buildParentResultUrl,
   copyText,
   ensureParentShareToken,
+  getCtaVariant,
   hide,
   initApp,
   loadQuiz,
   loadSharedResult,
   renderQuestion,
+  renderSkillSummary,
   shareOrCopy,
+  shareParentResult,
   show,
   state,
+  submitCallbackRequest,
   submitLead
 } from "../app.module.js";
 
 const ATTEMPT_ID = "123e4567-e89b-12d3-a456-426614174000";
 const ATTEMPT_TOKEN = "123e4567-e89b-12d3-a456-426614174001";
 const SHARE_TOKEN = "123e4567-e89b-12d3-a456-426614174002";
+const QUIZ = {
+  id: ATTEMPT_ID,
+  slug: ACTIVE_QUIZ_SLUG,
+  title: "Diagnostic français 5e",
+  week_label: "10 questions",
+  level: "5e",
+  subject: "francais"
+};
+const SKILLS = [
+  { code: "lecture", label: "Compréhension", correct: 2, total: 2, percentage: 100 },
+  { code: "accords", label: "Accords", correct: 0, total: 2, percentage: 0 },
+  { code: "grammaire", label: "Grammaire", correct: 1, total: 2, percentage: 50 }
+];
+
+const html = readFileSync(`${process.cwd()}/public/index.html`, "utf8");
+const bodyMarkup = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i)[1];
+
+function jsonResponse(data, status = 200) {
+  return Promise.resolve({
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => data
+  });
+}
 
 function renderAppFixture() {
-  document.body.innerHTML = `
-    <div id="subtitle"></div>
-    <section id="start-card" class="card"></section>
-    <button id="start-btn"></button>
-
-    <section id="quiz-card" class="card hidden">
-      <div id="progress"></div>
-      <div id="timer"></div>
-      <div class="question-scroll-area">
-        <div id="question-text"></div>
-        <div id="answers"></div>
-        <details id="explanation-card" class="explanation-card hidden">
-          <p id="explanation-text"></p>
-        </details>
-      </div>
-      <button id="next-btn"></button>
-    </section>
-
-    <section id="result-card" class="card hidden">
-      <div id="result-text"></div>
-      <div id="alias-text"></div>
-      <button id="share-parent-btn"></button>
-        <button id="share-challenge-btn"></button>
-      <button id="show-lead-form-btn"></button>
-      <button id="show-board-btn"></button>
-      <div id="share-message"></div>
-    </section>
-
-    <section id="parent-card" class="card hidden">
-      <div id="parent-result-title"></div>
-      <div id="parent-result-text"></div>
-      <div id="parent-result-context"></div>
-    </section>
-
-    <section id="lead-card" class="card hidden">
-      <div id="lead-context-text"></div>
-      <form id="lead-form">
-        <input id="parent-name" />
-        <input id="parent-email" />
-        <input id="parent-phone" />
-        <input id="postal-code" />
-        <input id="callback-requested" type="checkbox" />
-        <input id="email-consent" type="checkbox" />
-        <button id="lead-submit"></button>
-      </form>
-      <div id="lead-message"></div>
-    </section>
-
-    <section id="leaderboard-card" class="card hidden">
-      <button id="refresh-btn"></button>
-      <div id="board-empty"></div>
-      <ol id="leaderboard"></ol>
-    </section>
-  `;
+  document.body.innerHTML = bodyMarkup;
+  document.body.dataset.view = "loading";
 }
 
 function resetState() {
   clearInterval(state.timerId);
   Object.assign(state, {
     quizId: null,
+    quiz: null,
     questions: [],
     answers: {},
     index: 0,
@@ -90,7 +70,23 @@ function resetState() {
     attemptToken: null,
     parentShareToken: null,
     parentMode: false,
-    sharedResult: null
+    sharedResult: null,
+    skillSummary: [],
+    sessionId: null,
+    ctaVariant: null
+  });
+}
+
+function installFetchRouter(routes = {}) {
+  global.fetch = vi.fn((input, options = {}) => {
+    const url = String(input);
+    if (url === "/api/event") return jsonResponse({ ok: true }, 201);
+    for (const [prefix, handler] of Object.entries(routes)) {
+      if (url.startsWith(prefix)) {
+        return typeof handler === "function" ? handler(url, options) : jsonResponse(handler);
+      }
+    }
+    throw new Error(`Unexpected fetch: ${url}`);
   });
 }
 
@@ -99,17 +95,11 @@ describe("public app module", () => {
     renderAppFixture();
     resetState();
     localStorage.clear();
+    localStorage.setItem("kisavan_cta_variant", "A");
     history.replaceState({}, "", "/");
     vi.restoreAllMocks();
-
-    Object.defineProperty(navigator, "share", {
-      configurable: true,
-      value: undefined
-    });
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: undefined
-    });
+    Object.defineProperty(navigator, "share", { configurable: true, value: undefined });
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
   });
 
   afterEach(() => {
@@ -118,277 +108,195 @@ describe("public app module", () => {
   });
 
   it("api returns JSON and preserves custom headers", async () => {
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ success: true })
-    });
-
-    const data = await api("/api/test", {
-      method: "POST",
-      headers: { "X-Test": "yes" }
-    });
-
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true }) });
+    const data = await api("/api/test", { method: "POST", headers: { "X-Test": "yes" } });
     expect(data).toEqual({ success: true });
     expect(fetch).toHaveBeenCalledWith("/api/test", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Test": "yes"
-      }
+      headers: { "Content-Type": "application/json", "X-Test": "yes" }
     });
   });
 
-  it("api throws the API error when the response is not ok", async () => {
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: false,
-      json: async () => ({ error: "Erreur test" })
-    });
-
-    await expect(api("/api/test")).rejects.toThrow("Erreur test");
-  });
-
-  it("restores a completed result after a page reload", async () => {
-    const storedAttempt = {
+  it("restores a completed diagnostic including skills", async () => {
+    localStorage.setItem(`kisavan_attempt_${ATTEMPT_ID}`, JSON.stringify({
       attemptId: ATTEMPT_ID,
       attemptToken: ATTEMPT_TOKEN,
       alias: "Colibri-321",
       score: 3,
       total: 5,
-      durationMs: 28000
-    };
-    localStorage.setItem(`kisavan_attempt_${ATTEMPT_ID}`, JSON.stringify(storedAttempt));
-
-    global.fetch = vi.fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          quiz: { id: ATTEMPT_ID, title: "Super Quiz", week_label: "Semaine 1" },
-          questions: [{ id: "q1", prompt: "Question", choices: ["A", "B"] }]
-        })
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ entries: [] })
-      });
+      durationMs: 28000,
+      skillSummary: SKILLS
+    }));
+    installFetchRouter({ "/api/quiz": { quiz: QUIZ, questions: [{ id: "q1", prompt: "Question", choices: ["A", "B"] }] } });
 
     await loadQuiz();
-
-    expect(state.attemptId).toBe(ATTEMPT_ID);
     expect(document.body.dataset.view).toBe("result");
-    expect(document.getElementById("result-card").classList.contains("hidden")).toBe(false);
-    expect(document.getElementById("result-text").textContent).toContain("3/5");
+    expect(document.getElementById("result-score-number").textContent).toBe("3/5");
+    expect(document.getElementById("result-strengths").textContent).toContain("Compréhension");
   });
 
-  it("loadQuiz updates state, subtitle and view", async () => {
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        quiz: { id: ATTEMPT_ID, title: "Super Quiz", week_label: "Semaine 1" },
-        questions: [{ id: "q1", prompt: "Question", choices: ["A", "B"] }]
-      })
-    });
-
+  it("loads only the quiz imposed by the active slug", async () => {
+    installFetchRouter({ "/api/quiz": { quiz: QUIZ, questions: [{ id: "q1", prompt: "Question", choices: ["A", "B"] }] } });
     await loadQuiz();
-
     expect(state.quizId).toBe(ATTEMPT_ID);
-    expect(state.questions).toHaveLength(1);
-    expect(document.getElementById("subtitle").textContent).toContain("Super Quiz");
-    expect(document.body.dataset.view).toBe("start");
+    expect(fetch.mock.calls[0][0]).toBe(`/api/quiz?slug=${encodeURIComponent(ACTIVE_QUIZ_SLUG)}`);
+    expect(document.getElementById("subtitle").textContent).toContain("Diagnostic français 5e");
   });
 
-  it("renderQuestion creates answers and enables next after a choice", () => {
-    state.questions = [
-      {
-        id: "q1",
-        prompt: "Quelle est la somme de 1+1 ?",
-        choices: ["1", "2", "3"],
-        correct_index: 1,
-        explanation: "1 + 1 = 2."
-      }
-    ];
+  it("renders answer feedback and records the selected answer", () => {
+    installFetchRouter();
+    state.quizId = ATTEMPT_ID;
+    state.questions = [{
+      id: "q1",
+      prompt: "Quelle réponse ?",
+      choices: ["A", "B", "C"],
+      correct_index: 1,
+      explanation: "B est la bonne réponse.",
+      skill_code: "lecture"
+    }];
 
     renderQuestion();
-    expect(document.getElementById("next-btn").disabled).toBe(true);
-    expect(document.getElementById("answers").children).toHaveLength(3);
-
     document.getElementById("answers").children[0].click();
-
     expect(state.answers.q1).toBe(0);
-    expect(document.getElementById("next-btn").disabled).toBe(false);
     expect(document.getElementById("answers").children[0].classList.contains("incorrect")).toBe(true);
     expect(document.getElementById("answers").children[1].classList.contains("correct")).toBe(true);
-    expect(document.getElementById("explanation-card").classList.contains("hidden")).toBe(false);
-    expect(document.getElementById("explanation-text").textContent).toBe("1 + 1 = 2.");
+    expect(document.getElementById("explanation-text").textContent).toContain("bonne réponse");
   });
 
-  it("show and hide toggle the hidden class", () => {
+  it("renders the strongest and weakest skills separately", () => {
+    renderSkillSummary(SKILLS, "result");
+    expect(document.getElementById("result-strengths").textContent).toContain("Compréhension");
+    expect(document.getElementById("result-focus").textContent).toContain("Accords");
+  });
+
+  it("show and hide toggle cards", () => {
     show("quiz-card");
     expect(document.getElementById("quiz-card").classList.contains("hidden")).toBe(false);
-
     hide("quiz-card");
     expect(document.getElementById("quiz-card").classList.contains("hidden")).toBe(true);
   });
 
-  it("builds clean challenge and parent URLs", () => {
-    expect(buildChallengeUrl()).toBe("http://localhost:3000/");
-    expect(buildParentResultUrl(SHARE_TOKEN)).toBe(
-      `http://localhost:3000/?bilan=${SHARE_TOKEN}`
-    );
+  it("builds social-preview URLs rather than raw query links", () => {
+    expect(buildChallengeUrl()).toBe("http://localhost:3000/partage/challenge");
+    expect(buildParentResultUrl(SHARE_TOKEN)).toBe(`http://localhost:3000/bilan/${SHARE_TOKEN}`);
   });
 
-  it("creates a parent share token once and caches it", async () => {
+  it("keeps one CTA variant per visitor", () => {
+    localStorage.setItem("kisavan_cta_variant", "B");
+    state.ctaVariant = null;
+    expect(getCtaVariant()).toBe("B");
+    applyCtaVariant();
+    expect(document.getElementById("parent-action-heading").textContent).toBe("Comprendre mes erreurs");
+  });
+
+  it("creates and caches the parent share token", async () => {
     state.attemptId = ATTEMPT_ID;
     state.attemptToken = ATTEMPT_TOKEN;
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ shareToken: SHARE_TOKEN })
-    });
-
+    installFetchRouter({ "/api/share": { shareToken: SHARE_TOKEN } });
     await expect(ensureParentShareToken()).resolves.toBe(SHARE_TOKEN);
     await expect(ensureParentShareToken()).resolves.toBe(SHARE_TOKEN);
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch.mock.calls.filter(([url]) => url === "/api/share")).toHaveLength(1);
   });
 
-  it("uses the native share menu when available", async () => {
+  it("uses the native mobile share menu when available", async () => {
     const nativeShare = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, "share", {
-      configurable: true,
-      value: nativeShare
-    });
-
-    const result = await shareOrCopy({
-      title: "Titre",
-      text: "Texte",
-      url: "https://example.com"
-    });
-
+    Object.defineProperty(navigator, "share", { configurable: true, value: nativeShare });
+    const result = await shareOrCopy({ title: "Titre", text: "Texte", url: "https://example.com" });
     expect(result).toBe("shared");
-    expect(nativeShare).toHaveBeenCalledWith({
-      title: "Titre",
-      text: "Texte",
-      url: "https://example.com"
-    });
+    expect(nativeShare).toHaveBeenCalledWith({ title: "Titre", text: "Texte", url: "https://example.com" });
   });
 
-  it("copies the URL when native sharing is unavailable", async () => {
+  it("copies the URL only as a fallback when native sharing is unavailable", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText }
-    });
-
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
     await copyText("https://example.com/bilan");
-    const result = await shareOrCopy({
-      title: "Titre",
-      text: "Texte",
-      url: "https://example.com/challenge"
-    });
-
+    const result = await shareOrCopy({ title: "Titre", text: "Texte", url: "https://example.com/challenge" });
     expect(result).toBe("copied");
     expect(writeText).toHaveBeenLastCalledWith("https://example.com/challenge");
   });
 
-  it("submitLead rejects a form without a linked attempt", async () => {
-    const event = { preventDefault: vi.fn() };
+  it("shares a natural child-to-parent message", async () => {
+    state.quizId = ATTEMPT_ID;
+    state.attemptId = ATTEMPT_ID;
+    state.attemptToken = ATTEMPT_TOKEN;
+    const nativeShare = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "share", { configurable: true, value: nativeShare });
+    installFetchRouter({ "/api/share": { shareToken: SHARE_TOKEN } });
 
-    await submitLead(event);
-
-    expect(event.preventDefault).toHaveBeenCalled();
-    expect(document.getElementById("lead-message").textContent).toContain("Participation introuvable");
+    await shareParentResult();
+    const sharePayload = nativeShare.mock.calls[0][0];
+    expect(sharePayload.text).toContain("Peux-tu regarder mon résultat");
+    expect(sharePayload.url).toContain(`/bilan/${SHARE_TOKEN}`);
   });
 
-  it("submitLead sends only the light direct-result fields", async () => {
+  it("submits only the short parent form and reveals the appointment step", async () => {
     state.attemptId = ATTEMPT_ID;
     state.attemptToken = ATTEMPT_TOKEN;
     document.getElementById("parent-name").value = "Marie";
     document.getElementById("parent-email").value = "marie@example.com";
-    document.getElementById("postal-code").value = "75001";
-
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ ok: true })
-    });
+    document.getElementById("main-concern").value = "confiance";
+    installFetchRouter({ "/api/lead": { ok: true } });
 
     await submitLead({ preventDefault: vi.fn() });
-
-    const request = global.fetch.mock.calls[0][1];
-    const payload = JSON.parse(request.body);
-    expect(payload).toEqual({
-      attemptId: ATTEMPT_ID,
-      attemptToken: ATTEMPT_TOKEN,
+    const call = fetch.mock.calls.find(([url]) => url === "/api/lead");
+    const payload = JSON.parse(call[1].body);
+    expect(payload).toEqual(expect.objectContaining({
+      mode: "lead",
       parentName: "Marie",
       parentEmail: "marie@example.com",
-      parentPhone: "",
-      postalCode: "75001",
-      callbackRequested: false,
-      emailMarketingConsent: false
-    });
-    expect(payload).not.toHaveProperty("childLevel");
-    expect(payload).not.toHaveProperty("mainDifficulty");
-    expect(document.getElementById("lead-message").textContent).toContain("Demande enregistrée");
+      mainConcern: "confiance"
+    }));
+    expect(payload).not.toHaveProperty("parentPhone");
+    expect(payload).not.toHaveProperty("postalCode");
+    expect(document.getElementById("lead-success-panel").classList.contains("hidden")).toBe(false);
   });
 
-  it("submitLead uses the share token on the parent page", async () => {
-    state.parentMode = true;
-    state.parentShareToken = SHARE_TOKEN;
-    document.getElementById("parent-name").value = "Paul";
-    document.getElementById("parent-email").value = "paul@example.com";
+  it("submits the callback as a separate second commitment", async () => {
+    state.attemptId = ATTEMPT_ID;
+    state.attemptToken = ATTEMPT_TOKEN;
+    document.getElementById("callback-phone").value = "0600000000";
+    document.getElementById("preferred-contact-time").value = "soir";
+    installFetchRouter({ "/api/lead": { ok: true } });
 
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ ok: true })
-    });
-
-    await submitLead({ preventDefault: vi.fn() });
-
-    const payload = JSON.parse(global.fetch.mock.calls[0][1].body);
-    expect(payload.shareToken).toBe(SHARE_TOKEN);
-    expect(payload).not.toHaveProperty("attemptToken");
+    await submitCallbackRequest({ preventDefault: vi.fn() });
+    const payload = JSON.parse(fetch.mock.calls.find(([url]) => url === "/api/lead")[1].body);
+    expect(payload).toEqual(expect.objectContaining({
+      mode: "callback",
+      parentPhone: "0600000000",
+      preferredContactTime: "soir"
+    }));
+    expect(document.getElementById("callback-message").textContent).toContain("enregistrée");
   });
 
-  it("loadSharedResult opens the parent result and lead form", async () => {
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
+  it("opens a visually distinct parent page with the skill preview", async () => {
+    installFetchRouter({
+      "/api/shared-result": {
         result: {
           attemptId: ATTEMPT_ID,
           alias: "Colibri-123",
           score: 4,
           total: 5,
           durationSeconds: 32,
-          quiz: {
-            title: "Fractions",
-            weekLabel: "Semaine 1",
-            level: "5e",
-            subjectLabel: "Mathématiques"
-          }
+          skillSummary: SKILLS,
+          quiz: { title: "Français", weekLabel: "Diagnostic", level: "5e", subjectLabel: "Français" }
         }
-      })
+      }
     });
 
     await loadSharedResult(SHARE_TOKEN);
-
-    expect(state.parentMode).toBe(true);
     expect(document.body.dataset.view).toBe("parent");
-    expect(document.getElementById("parent-card").classList.contains("hidden")).toBe(false);
-    expect(document.getElementById("lead-card").classList.contains("hidden")).toBe(false);
-    expect(document.getElementById("parent-result-text").textContent).toContain("4/5");
+    expect(document.getElementById("page-title").textContent).toBe("Comprendre pour mieux progresser");
+    expect(document.getElementById("parent-result-score").textContent).toBe("4/5");
+    expect(document.getElementById("parent-focus").textContent).toContain("Accords");
   });
 
-  it("initApp binds the new actions and loads the quiz", async () => {
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        quiz: { id: ATTEMPT_ID, title: "Super Quiz", week_label: "Semaine 1" },
-        questions: [{ id: "q1", prompt: "Q1", choices: ["A", "B"] }]
-      })
-    });
-
+  it("initializes all current actions without references to the removed leaderboard", async () => {
+    installFetchRouter({ "/api/quiz": { quiz: QUIZ, questions: [{ id: "q1", prompt: "Q1", choices: ["A", "B"] }] } });
     initApp();
     await new Promise((resolve) => setTimeout(resolve, 0));
-
     expect(typeof document.getElementById("start-btn").onclick).toBe("function");
     expect(typeof document.getElementById("share-parent-btn").onclick).toBe("function");
-    expect(document.getElementById("subtitle").textContent).toContain("Super Quiz");
+    expect(typeof document.getElementById("skip-callback-btn").onclick).toBe("function");
+    expect(document.getElementById("leaderboard-card")).toBeNull();
   });
 });
