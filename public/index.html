@@ -1,12 +1,13 @@
- <!doctype html>
+<!doctype html>
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#f6f7fb" />
   <title>Challenge Ki'Savan</title>
   <link rel="stylesheet" href="/style.css" />
 </head>
-<body>
+<body data-view="loading">
   <main class="container">
     <header>
       <p class="eyebrow">Challenge hebdomadaire</p>
@@ -16,98 +17,134 @@
 
     <section id="start-card" class="card">
       <h2>Prêt(e) ?</h2>
-      <p>Quelques questions, une seule tentative sur cet appareil. Aucun nom ni e-mail demandé pour participer.</p>
-      <label>Niveau
-        <select id="level"><option value="5e">5e</option></select>
-      </label>
-      <label>Matière
-        <select id="subject"><option value="maths">Mathématiques</option></select>
-      </label>
-      <button id="start-btn">Commencer</button>
+      <p>Quelques questions, une seule tentative sur cet appareil. Aucune coordonnée n'est demandée à l'enfant.</p>
+
+      <div class="start-fields">
+        <label>Niveau
+          <select id="level"><option value="5e">5e</option></select>
+        </label>
+        <label>Matière
+          <select id="subject"><option value="maths">Mathématiques</option></select>
+        </label>
+      </div>
+
+      <button id="start-btn" type="button">Commencer</button>
       <p class="small">Un surnom aléatoire sera généré pour le classement de la semaine.</p>
     </section>
 
-    <section id="quiz-card" class="card hidden">
-      <div class="progress-row"><span id="progress"></span><span id="timer">00:00</span></div>
-      <h2 id="question-text"></h2>
-      <div id="answers" class="answers"></div>
-      <div id="explanation-card" class="explanation-card hidden">
-        <h3>Explications</h3>
-        <p id="explanation-text"></p>
+    <section id="quiz-card" class="card hidden" aria-live="polite">
+      <div class="progress-row">
+        <span id="progress"></span>
+        <span id="timer">00:00</span>
       </div>
-      <button id="next-btn" disabled>Question suivante</button>
+
+      <div class="question-scroll-area">
+        <h2 id="question-text"></h2>
+        <div id="answers" class="answers"></div>
+
+        <details id="explanation-card" class="explanation-card hidden">
+          <summary>Voir l'explication</summary>
+          <p id="explanation-text"></p>
+        </details>
+      </div>
+
+      <button id="next-btn" type="button" disabled>Question suivante</button>
     </section>
 
     <section id="result-card" class="card hidden">
-      <h2>Résultat</h2>
-      <p id="result-text"></p>
-      <p id="alias-text" class="alias"></p>
+      <div class="result-heading">
+        <p class="eyebrow">Challenge terminé</p>
+        <h2>Bravo !</h2>
+        <p id="result-text" class="result-score"></p>
+        <p id="alias-text" class="alias"></p>
+      </div>
 
+      <div class="share-box">
+        <h3>Transmettre le résultat</h3>
+        <p>Le bilan détaillé reste privé : envoie son lien à un parent, ou partage simplement le challenge avec tes amis.</p>
+
+        <button id="share-parent-btn" type="button">Envoyer le bilan à un parent</button>
+        <button id="copy-parent-link-btn" type="button" class="secondary full-width">Copier le lien du bilan</button>
+        <button id="share-challenge-btn" type="button" class="secondary full-width">Défier mes amis</button>
+        <p id="share-message" class="small status-message" aria-live="polite"></p>
+      </div>
+
+      <button id="show-lead-form-btn" type="button" class="text-button">Je suis le parent : recevoir le bilan gratuit</button>
+      <button id="show-board-btn" type="button" class="secondary full-width">Voir le classement</button>
+    </section>
+
+    <section id="parent-card" class="card hidden">
+      <p class="eyebrow">Bilan Ki'Savan</p>
+      <h2 id="parent-result-title">Résultat transmis</h2>
+      <p id="parent-result-text" class="result-score"></p>
+      <p id="parent-result-context"></p>
+      <div class="preview-box">
+        <strong>Aperçu du bilan</strong>
+        <p>Les réponses du quiz permettent d'identifier les notions réussies et celles à retravailler. Laissez vos coordonnées pour recevoir un retour personnalisé.</p>
+      </div>
+    </section>
+
+    <section id="lead-card" class="card hidden">
       <div class="lead-box">
-        <h3>Recevoir un bilan gratuit</h3>
-        <p>Le parent peut laisser ses coordonnées pour recevoir un retour sur les difficultés observées et demander un rappel.</p>
+        <h2>Recevoir le bilan gratuit</h2>
+        <p id="lead-context-text">Laissez vos coordonnées pour recevoir un retour personnalisé sur les résultats.</p>
 
         <form id="lead-form">
-          <label for="parent-name">Prénom du parent *</label>
-          <input id="parent-name" name="parentName" maxlength="80" autocomplete="given-name" required />
+          <div class="form-grid">
+            <label for="parent-name">Prénom du parent *</label>
+            <input id="parent-name" name="parentName" maxlength="80" autocomplete="given-name" required />
 
-          <label for="parent-email">E-mail du parent *</label>
-          <input id="parent-email" name="parentEmail" type="email" maxlength="254" autocomplete="email" required />
+            <label for="parent-email">Adresse e-mail *</label>
+            <input id="parent-email" name="parentEmail" type="email" maxlength="254" autocomplete="email" required />
 
-          <label for="parent-phone">Téléphone du parent, facultatif</label>
-          <input id="parent-phone" name="parentPhone" type="tel" maxlength="30" autocomplete="tel" />
-          <label for="postal-code">Code postal, facultatif</label>
-          <input
-           id="postal-code"
-           name="postalCode"
-           type="text"
-           inputmode="numeric"
-           maxlength="5"
-           pattern="[0-9]{5}"
-           placeholder="Exemple : 97122"
-         />
-          <label for="child-level">Classe de l'enfant</label>
-          <select id="child-level" name="childLevel">
-            <option value="">Choisir</option>
-            <option value="6e">6e</option>
-            <option value="5e">5e</option>
-            <option value="4e">4e</option>
-            <option value="3e">3e</option>
-          </select>
+            <label for="parent-phone">Téléphone, facultatif</label>
+            <input id="parent-phone" name="parentPhone" type="tel" maxlength="30" autocomplete="tel" inputmode="tel" />
 
-          <label for="main-difficulty">Difficulté principale, facultatif</label>
-          <textarea id="main-difficulty" name="mainDifficulty" maxlength="300" rows="3" placeholder="Exemple : fractions, calcul mental, manque de confiance..."></textarea>
+            <label for="postal-code">Code postal, facultatif</label>
+            <input
+              id="postal-code"
+              name="postalCode"
+              type="text"
+              inputmode="numeric"
+              autocomplete="postal-code"
+              maxlength="5"
+              pattern="[0-9]{5}"
+              placeholder="Exemple : 97122"
+            />
+          </div>
 
           <label class="check-row">
             <input id="callback-requested" name="callbackRequested" type="checkbox" />
-            <span>Je souhaite être rappelé(e) pour parler du bilan.</span>
+            <span>Je souhaite être rappelé(e) pour une explication gratuite du bilan.</span>
           </label>
 
           <label class="check-row">
             <input id="email-consent" name="emailMarketingConsent" type="checkbox" />
-            <span>J'accepte de recevoir par e-mail des conseils et des offres de Ki'Savan.</span>
+            <span>Je souhaite recevoir par e-mail des conseils pédagogiques et les offres Ki'Savan.</span>
           </label>
 
-          <button id="lead-submit" type="submit">Demander mon bilan gratuit</button>
-          <p id="lead-message" class="small" aria-live="polite"></p>
-          <p class="small">Les coordonnées sont utilisées pour répondre à la demande. Le consentement aux conseils et offres est facultatif.</p>
+          <button id="lead-submit" type="submit">Recevoir mon bilan gratuit</button>
+          <p id="lead-message" class="small status-message" aria-live="polite"></p>
+          <p class="small legal-note">Les coordonnées servent à préparer et envoyer le bilan demandé. Le rappel et les communications commerciales restent facultatifs.</p>
         </form>
       </div>
-
-      <button id="show-board-btn" class="secondary full-width">Voir le classement</button>
     </section>
 
     <section id="leaderboard-card" class="card hidden">
-      <div class="board-title"><h2>Classement de la semaine</h2><button id="refresh-btn" class="secondary">Actualiser</button></div>
+      <div class="board-title">
+        <h2>Classement de la semaine</h2>
+        <button id="refresh-btn" type="button" class="secondary">Actualiser</button>
+      </div>
       <ol id="leaderboard"></ol>
       <p id="board-empty" class="small hidden">Aucune participation pour le moment.</p>
     </section>
 
     <footer>
-      <p>Ki'Savan - Apprendre, progresser, gagner en autonomie.</p>
+      <p>Ki'Savan — Apprendre, progresser, gagner en autonomie.</p>
       <p class="small">Résultat ludique, pas une évaluation scolaire officielle.</p>
     </footer>
   </main>
+
   <script type="module" src="/app.js"></script>
 </body>
 </html>
