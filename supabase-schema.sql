@@ -40,11 +40,17 @@ create table if not exists public.attempts (
   duration_ms integer not null,
   public_token uuid not null unique,
   skill_summary jsonb not null default '[]'::jsonb,
+  strengths_text text,
+  work_priorities_text text,
+  diagnostic_text text,
   created_at timestamptz not null default now()
 );
 
 alter table public.attempts
   add column if not exists skill_summary jsonb not null default '[]'::jsonb;
+alter table public.attempts add column if not exists strengths_text text;
+alter table public.attempts add column if not exists work_priorities_text text;
+alter table public.attempts add column if not exists diagnostic_text text;
 
 create index if not exists attempts_quiz_created_idx
   on public.attempts (quiz_id, created_at desc);
@@ -154,6 +160,9 @@ select
   a.total,
   a.duration_ms,
   a.skill_summary,
+  a.strengths_text,
+  a.work_priorities_text,
+  a.diagnostic_text,
   qz.slug as quiz_slug,
   qz.title as quiz_title,
   qz.week_label,

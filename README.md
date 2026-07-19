@@ -287,3 +287,35 @@ functions/
   partage/challenge.js
 supabase-schema.sql
 ```
+
+## Diagnostic rédigé pour préparer l'appel parent
+
+Chaque nouvelle tentative enregistre aussi trois textes prêts à l'emploi dans `attempts` et dans la vue `parent_lead_review` :
+
+```text
+strengths_text
+work_priorities_text
+diagnostic_text
+```
+
+Pour retrouver directement le bilan d'un enfant avec son alias :
+
+```sql
+select
+  lead_created_at,
+  parent_name,
+  parent_email,
+  parent_phone,
+  alias,
+  score,
+  total,
+  strengths_text,
+  work_priorities_text,
+  diagnostic_text,
+  mistakes
+from public.parent_lead_review
+where alias = 'Colibri-123'
+order by lead_created_at desc;
+```
+
+Les anciennes tentatives restent consultables, mais leurs trois nouveaux champs peuvent être vides puisqu'ils n'existaient pas au moment du passage du quiz. Toutes les nouvelles tentatives les remplissent automatiquement.

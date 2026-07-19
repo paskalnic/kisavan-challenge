@@ -9,7 +9,7 @@ vi.mock("../../_common.js", async () => {
   };
 });
 
-import { onRequestPost } from "../submit.js";
+import { buildDiagnosticTexts, onRequestPost } from "../submit.js";
 import { supabaseRequest } from "../../_common.js";
 
 const QUIZ_ID = "123e4567-e89b-12d3-a456-426614174000";
@@ -59,6 +59,21 @@ describe("submit API", () => {
 
     const attempt = JSON.parse(supabaseRequest.mock.calls[1][2].body);
     expect(attempt.skill_summary).toEqual(result.skillSummary);
+    expect(attempt.strengths_text).toBe("Points d'appui : accords.");
+    expect(attempt.work_priorities_text).toBe("Priorités de travail : lecture.");
+    expect(attempt.diagnostic_text).toContain("bons acquis en accords");
+    expect(result.diagnosticText).toBe(attempt.diagnostic_text);
+  });
+
+  it("generates a reassuring diagnostic when all skills are mastered", () => {
+    expect(buildDiagnosticTexts([
+      { code: "lecture", label: "Lecture", correct: 2, total: 2, percentage: 100 },
+      { code: "accords", label: "Accords", correct: 2, total: 2, percentage: 100 }
+    ])).toEqual({
+      strengthsText: "Points d'appui : accords et lecture.",
+      workPrioritiesText: "Aucune difficulté prioritaire ne ressort de ce quiz ; il convient de maintenir les acquis par un entraînement régulier.",
+      diagnosticText: "L'élève maîtrise solidement les compétences évaluées. Un entraînement régulier permettra de maintenir ces acquis et de gagner encore en aisance."
+    });
   });
 
   it("rejects incomplete, duplicate or out-of-range answers", async () => {

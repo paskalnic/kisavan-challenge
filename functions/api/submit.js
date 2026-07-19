@@ -20,6 +20,36 @@ function buildSkillSummary(questions, answerMap) {
   }));
 }
 
+function joinFrench(items) {
+  if (items.length <= 1) return items[0] || "";
+  return `${items.slice(0, -1).join(", ")} et ${items.at(-1)}`;
+}
+
+export function buildDiagnosticTexts(skillSummary) {
+  const ranked = [...skillSummary].sort((a, b) => b.percentage - a.percentage || a.label.localeCompare(b.label, "fr"));
+  const strengths = ranked.filter((skill) => skill.percentage >= 75).slice(0, 2);
+  const priorities = [...ranked].reverse().filter((skill) => skill.percentage < 100).slice(0, 2);
+
+  const strengthsText = strengths.length
+    ? `Points d'appui : ${joinFrench(strengths.map((skill) => skill.label.toLowerCase()))}.`
+    : "Les acquis restent à consolider dans plusieurs domaines ; l'élève gagnerait à reprendre les bases progressivement.";
+
+  const workPrioritiesText = priorities.length
+    ? `Priorités de travail : ${joinFrench(priorities.map((skill) => skill.label.toLowerCase()))}.`
+    : "Aucune difficulté prioritaire ne ressort de ce quiz ; il convient de maintenir les acquis par un entraînement régulier.";
+
+  let diagnosticText;
+  if (!priorities.length) {
+    diagnosticText = "L'élève maîtrise solidement les compétences évaluées. Un entraînement régulier permettra de maintenir ces acquis et de gagner encore en aisance.";
+  } else if (strengths.length) {
+    diagnosticText = `L'élève montre de bons acquis en ${joinFrench(strengths.map((skill) => skill.label.toLowerCase()))}, mais ses réponses révèlent des fragilités en ${joinFrench(priorities.map((skill) => skill.label.toLowerCase()))}. Ces domaines doivent être travaillés en priorité avec des exercices progressifs et une reprise des erreurs.`;
+  } else {
+    diagnosticText = `Les résultats montrent des fragilités dans plusieurs compétences, en particulier en ${joinFrench(priorities.map((skill) => skill.label.toLowerCase()))}. Il est conseillé de reprendre les notions de base, puis de vérifier les progrès avec des exercices courts et réguliers.`;
+  }
+
+  return { strengthsText, workPrioritiesText, diagnosticText };
+}
+
 function validateAnswers(questions, answers) {
   if (!Array.isArray(answers) || answers.length !== questions.length) {
     return null;
@@ -82,6 +112,7 @@ export async function onRequestPost(context) {
       0
     );
     const skillSummary = buildSkillSummary(normalizedQuestions, answerMap);
+    const diagnosticTexts = buildDiagnosticTexts(skillSummary);
     const alias = randomAlias();
     const attemptToken = crypto.randomUUID();
 
@@ -98,7 +129,10 @@ export async function onRequestPost(context) {
           total: normalizedQuestions.length,
           duration_ms: durationMs,
           public_token: attemptToken,
-          skill_summary: skillSummary
+          skill_summary: skillSummary,
+          strengths_text: diagnosticTexts.strengthsText,
+          work_priorities_text: diagnosticTexts.workPrioritiesText,
+          diagnostic_text: diagnosticTexts.diagnosticText
         })
       }
     );
@@ -139,7 +173,8 @@ export async function onRequestPost(context) {
         score,
         total: normalizedQuestions.length,
         durationMs,
-        skillSummary
+        skillSummary,
+        ...diagnosticTexts
       },
       201
     );

@@ -27,7 +27,7 @@ export async function onRequestGet(context) {
     const share = shares[0];
     const attempts = await supabaseRequest(
       context.env,
-      `attempts?id=eq.${share.attempt_id}&select=id,quiz_id,alias,score,total,duration_ms,skill_summary&limit=1`
+      `attempts?id=eq.${share.attempt_id}&select=id,quiz_id,alias,score,total,duration_ms,skill_summary,strengths_text,work_priorities_text,diagnostic_text&limit=1`
     );
 
     if (!attempts?.length) {
@@ -80,6 +80,9 @@ export async function onRequestGet(context) {
         total: attempt.total,
         durationSeconds: Math.round(attempt.duration_ms / 1000),
         skillSummary: Array.isArray(attempt.skill_summary) ? attempt.skill_summary : [],
+        strengthsText: attempt.strengths_text || "",
+        workPrioritiesText: attempt.work_priorities_text || "",
+        diagnosticText: attempt.diagnostic_text || "",
         quiz: {
           title: quiz.title,
           weekLabel: quiz.week_label,
