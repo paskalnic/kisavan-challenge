@@ -1,66 +1,47 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../_common.js", async () => {
   const actual = await vi.importActual("../../_common.js");
-  return {
-    ...actual,
-    supabaseRequest: vi.fn()
-  };
+  return { ...actual, supabaseRequest: vi.fn() };
 });
 
 import { onRequestGet } from "../quiz.js";
 import { supabaseRequest } from "../../_common.js";
 
+const SLUG = "francais-5e-diagnostic-v2";
+
 describe("quiz API", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
+  beforeEach(() => vi.clearAllMocks());
 
-  it("returns quiz data when a matching quiz exists", async () => {
+  it("returns the imposed quiz with diagnostic skill metadata", async () => {
     supabaseRequest
-      .mockResolvedValueOnce([
-        { id: "quiz-1", title: "Quiz 1", week_label: "Semaine 1", level: "5e", subject: "maths" }
-      ])
-      .mockResolvedValueOnce([
-        { id: "q1", prompt: "Quelle est la capitale ?", choices: ["A", "B"], position: 1 }
-      ]);
+      .mockResolvedValueOnce([{ id: "quiz-1", title: "Quiz 1", week_label: "10 questions", slug: SLUG, level: "5e", subject: "francais" }])
+      .mockResolvedValueOnce([{ id: "q1", prompt: "Question", choices: ["A", "B"], position: 1, skill_code: "lecture", skill_label: "Lecture" }]);
 
-    const request = new Request("https://example.com/api/quiz?level=5e&subject=maths");
-    const response = await onRequestGet({ request, env: {} });
+    const response = await onRequestGet({ request: new Request(`https://example.com/api/quiz?slug=${SLUG}`), env: {} });
     expect(response.status).toBe(200);
-
     const body = await response.json();
-    expect(body.quiz).toEqual(expect.objectContaining({ id: "quiz-1" }));
-    expect(body.questions).toHaveLength(1);
+    expect(body.questions[0].skill_code).toBe("lecture");
   });
 
-  it("returns 404 when no quiz is active", async () => {
+  it("returns 404 when no active quiz matches the slug", async () => {
     supabaseRequest.mockResolvedValueOnce([]);
-
-    const request = new Request("https://example.com/api/quiz?level=5e&subject=maths");
-    const response = await onRequestGet({ request, env: {} });
+    const response = await onRequestGet({ request: new Request(`https://example.com/api/quiz?slug=${SLUG}`), env: {} });
     expect(response.status).toBe(404);
-
-    const body = await response.json();
-    expect(body.error).toBe("Aucun quiz actif pour ce niveau.");
   });
 
-  it("calls supabaseRequest with the correct quizzes path", async () => {
+  it("queries the exact slug and skill columns", async () => {
     const env = { SUPABASE_URL: "https://example.supabase.co" };
-
     supabaseRequest
-      .mockResolvedValueOnce([
-        { id: "quiz-1", title: "Quiz 1", week_label: "Semaine 1", level: "5e", subject: "maths" }
-      ])
+      .mockResolvedValueOnce([{ id: "quiz-1", title: "Quiz 1", week_label: "10 questions", slug: SLUG, level: "5e", subject: "francais" }])
       .mockResolvedValueOnce([]);
 
-    const request = new Request("https://example.com/api/quiz?level=5e&subject=maths");
-    await onRequestGet({ request, env });
-
+    await onRequestGet({ request: new Request(`https://example.com/api/quiz?slug=${SLUG}`), env });
     expect(supabaseRequest).toHaveBeenNthCalledWith(
       1,
       env,
-      "quizzes?active=eq.true&level=eq.5e&subject=eq.maths&select=id,title,week_label,level,subject&limit=1"
+      `quizzes?slug=eq.${SLUG}&active=eq.true&select=id,slug,title,week_label,level,subject&limit=1`
     );
+    expect(supabaseRequest.mock.calls[1][1]).toContain("skill_code,skill_label");
   });
 });
