@@ -25,8 +25,6 @@ function renderAppFixture() {
     <div id="subtitle"></div>
     <section id="start-card" class="card"></section>
     <button id="start-btn"></button>
-    <select id="level"><option value="5e">5e</option></select>
-    <select id="subject"><option value="maths">Mathématiques</option></select>
 
     <section id="quiz-card" class="card hidden">
       <div id="progress"></div>
@@ -45,8 +43,7 @@ function renderAppFixture() {
       <div id="result-text"></div>
       <div id="alias-text"></div>
       <button id="share-parent-btn"></button>
-      <button id="copy-parent-link-btn"></button>
-      <button id="share-challenge-btn"></button>
+        <button id="share-challenge-btn"></button>
       <button id="show-lead-form-btn"></button>
       <button id="show-board-btn"></button>
       <div id="share-message"></div>
@@ -392,7 +389,6 @@ describe("public app module", () => {
 
     expect(typeof document.getElementById("start-btn").onclick).toBe("function");
     expect(typeof document.getElementById("share-parent-btn").onclick).toBe("function");
-    expect(typeof document.getElementById("copy-parent-link-btn").onclick).toBe("function");
     expect(document.getElementById("subtitle").textContent).toContain("Super Quiz");
   });
 });

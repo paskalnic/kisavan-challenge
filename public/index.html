@@ -19,15 +19,6 @@
       <h2>Prêt(e) ?</h2>
       <p>Quelques questions, une seule tentative sur cet appareil. Aucune coordonnée n'est demandée à l'enfant.</p>
 
-      <div class="start-fields">
-        <label>Niveau
-          <select id="level"><option value="5e">5e</option></select>
-        </label>
-        <label>Matière
-          <select id="subject"><option value="maths">Mathématiques</option></select>
-        </label>
-      </div>
-
       <button id="start-btn" type="button">Commencer</button>
       <p class="small">Un surnom aléatoire sera généré pour le classement de la semaine.</p>
     </section>
@@ -59,17 +50,27 @@
         <p id="alias-text" class="alias"></p>
       </div>
 
-      <div class="share-box">
-        <h3>Transmettre le résultat</h3>
-        <p>Le bilan détaillé reste privé : envoie son lien à un parent, ou partage simplement le challenge avec tes amis.</p>
-
-        <button id="share-parent-btn" type="button">Envoyer le bilan à un parent</button>
-        <button id="copy-parent-link-btn" type="button" class="secondary full-width">Copier le lien du bilan</button>
-        <button id="share-challenge-btn" type="button" class="secondary full-width">Défier mes amis</button>
-        <p id="share-message" class="small status-message" aria-live="polite"></p>
+      <div class="parent-action-box">
+        <span class="parent-action-icon" aria-hidden="true">📩</span>
+        <div>
+          <p class="parent-action-kicker">Étape recommandée</p>
+          <h3>Transmettre le bilan à un parent</h3>
+          <p>Un lien privé permet au parent de consulter le résultat et de demander une analyse personnalisée.</p>
+        </div>
+        <button id="share-parent-btn" type="button">Partager le bilan avec un parent</button>
       </div>
 
-      <button id="show-lead-form-btn" type="button" class="text-button">Je suis le parent : recevoir le bilan gratuit</button>
+      <div class="friend-action">
+        <p>Tu veux lancer le défi autour de toi ?</p>
+        <button id="share-challenge-btn" type="button" class="secondary full-width">Défier mes amis</button>
+      </div>
+      <p id="share-message" class="small status-message" aria-live="polite"></p>
+
+      <button id="show-lead-form-btn" type="button" class="parent-form-cta">
+        <span>👨‍👩‍👧</span>
+        <span><strong>Je suis le parent</strong><small>Recevoir le bilan pédagogique gratuit</small></span>
+        <span aria-hidden="true">→</span>
+      </button>
       <button id="show-board-btn" type="button" class="secondary full-width">Voir le classement</button>
     </section>
 

@@ -5,8 +5,6 @@ function renderEntryFixture() {
     <div id="subtitle"></div>
     <section id="start-card"></section>
     <button id="start-btn"></button>
-    <select id="level"><option value="5e">5e</option></select>
-    <select id="subject"><option value="maths">Mathématiques</option></select>
     <button id="next-btn"></button>
     <div id="question-text"></div>
     <div id="answers"></div>
@@ -21,7 +19,6 @@ function renderEntryFixture() {
     <form id="lead-form"></form>
     <button id="lead-submit"></button>
     <button id="share-parent-btn"></button>
-    <button id="copy-parent-link-btn"></button>
     <button id="share-challenge-btn"></button>
     <button id="show-lead-form-btn"></button>
     <button id="refresh-btn"></button>
@@ -60,7 +57,7 @@ describe("public app entry", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(fetch).toHaveBeenCalledWith(
-      "/api/quiz?level=5e&subject=maths",
+      "/api/quiz?slug=francais-5e-diagnostic",
       expect.objectContaining({ headers: { "Content-Type": "application/json" } })
     );
     expect(typeof document.getElementById("start-btn").onclick).toBe("function");

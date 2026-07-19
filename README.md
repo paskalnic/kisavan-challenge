@@ -89,3 +89,42 @@ La commande utilise un seul processus Vitest afin d'être stable aussi dans les 
 - Pour un concours avec récompense, ajouter Cloudflare Turnstile, une limitation de débit et un règlement.
 - Le lien parent est difficile à deviner grâce à un UUID, mais toute personne qui possède ce lien peut voir l'alias et le score associés.
 - Le menu de partage dépend des applications installées sur le téléphone. Le bouton de copie reste disponible en solution de secours.
+
+## Choisir le quiz affiché sur le site
+
+Le visiteur ne choisit ni le niveau ni la matière. Le quiz affiché est imposé dans :
+
+```js
+// public/app.module.js
+export const ACTIVE_QUIZ_SLUG = "francais-5e-diagnostic";
+```
+
+Pour afficher un autre quiz, remplace uniquement cette valeur par le `slug` du nouveau quiz, puis pousse le changement sur GitHub.
+
+## Ajouter un nouveau quiz
+
+Dans Supabase > SQL Editor, exécute un bloc sur ce modèle :
+
+```sql
+do $$
+declare
+  new_quiz_id uuid;
+begin
+  insert into public.quizzes (slug, title, week_label, level, subject, active)
+  values ('maths-4e-calcul', 'Diagnostic maths 4e', 'Calcul et raisonnement', '4e', 'maths', true)
+  returning id into new_quiz_id;
+
+  insert into public.questions (quiz_id, prompt, explanation, choices, correct_index, position)
+  values
+    (new_quiz_id, 'Question 1 ?', 'Explication.', '["Réponse A","Réponse B","Réponse C","Réponse D"]'::jsonb, 1, 1),
+    (new_quiz_id, 'Question 2 ?', 'Explication.', '["Réponse A","Réponse B","Réponse C","Réponse D"]'::jsonb, 0, 2);
+end $$;
+```
+
+Règles importantes :
+
+- `slug` doit être unique, sans espace ni accent ;
+- `correct_index` commence à 0 : 0 = première réponse, 1 = deuxième, etc. ;
+- `position` définit l'ordre des questions ;
+- mets ensuite ce même `slug` dans `ACTIVE_QUIZ_SLUG` ;
+- `active = false` permet de conserver un quiz dans la base sans qu'il soit accessible.

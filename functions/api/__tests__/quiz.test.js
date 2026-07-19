@@ -19,13 +19,13 @@ describe("quiz API", () => {
   it("returns quiz data when a matching quiz exists", async () => {
     supabaseRequest
       .mockResolvedValueOnce([
-        { id: "quiz-1", title: "Quiz 1", week_label: "Semaine 1", level: "5e", subject: "maths" }
+        { id: "quiz-1", title: "Quiz 1", week_label: "Semaine 1", slug: "francais-5e-diagnostic", level: "5e", subject: "francais" }
       ])
       .mockResolvedValueOnce([
         { id: "q1", prompt: "Quelle est la capitale ?", choices: ["A", "B"], position: 1 }
       ]);
 
-    const request = new Request("https://example.com/api/quiz?level=5e&subject=maths");
+    const request = new Request("https://example.com/api/quiz?slug=francais-5e-diagnostic");
     const response = await onRequestGet({ request, env: {} });
     expect(response.status).toBe(200);
 
@@ -37,12 +37,12 @@ describe("quiz API", () => {
   it("returns 404 when no quiz is active", async () => {
     supabaseRequest.mockResolvedValueOnce([]);
 
-    const request = new Request("https://example.com/api/quiz?level=5e&subject=maths");
+    const request = new Request("https://example.com/api/quiz?slug=francais-5e-diagnostic");
     const response = await onRequestGet({ request, env: {} });
     expect(response.status).toBe(404);
 
     const body = await response.json();
-    expect(body.error).toBe("Aucun quiz actif pour ce niveau.");
+    expect(body.error).toBe("Ce quiz n'est pas disponible.");
   });
 
   it("calls supabaseRequest with the correct quizzes path", async () => {
@@ -50,17 +50,17 @@ describe("quiz API", () => {
 
     supabaseRequest
       .mockResolvedValueOnce([
-        { id: "quiz-1", title: "Quiz 1", week_label: "Semaine 1", level: "5e", subject: "maths" }
+        { id: "quiz-1", title: "Quiz 1", week_label: "Semaine 1", slug: "francais-5e-diagnostic", level: "5e", subject: "francais" }
       ])
       .mockResolvedValueOnce([]);
 
-    const request = new Request("https://example.com/api/quiz?level=5e&subject=maths");
+    const request = new Request("https://example.com/api/quiz?slug=francais-5e-diagnostic");
     await onRequestGet({ request, env });
 
     expect(supabaseRequest).toHaveBeenNthCalledWith(
       1,
       env,
-      "quizzes?active=eq.true&level=eq.5e&subject=eq.maths&select=id,title,week_label,level,subject&limit=1"
+      "quizzes?slug=eq.francais-5e-diagnostic&active=eq.true&select=id,slug,title,week_label,level,subject&limit=1"
     );
   });
 });

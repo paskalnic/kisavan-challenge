@@ -1,3 +1,5 @@
+export const ACTIVE_QUIZ_SLUG = "francais-5e-diagnostic";
+
 export const state = {
   quizId: null,
   questions: [],
@@ -171,11 +173,7 @@ export function displayResult(result) {
 }
 
 export async function loadQuiz() {
-  const level = $("level").value;
-  const subject = $("subject").value;
-  const data = await api(
-    `/api/quiz?level=${encodeURIComponent(level)}&subject=${encodeURIComponent(subject)}`
-  );
+  const data = await api(`/api/quiz?slug=${encodeURIComponent(ACTIVE_QUIZ_SLUG)}`);
 
   state.quizId = data.quiz.id;
   state.questions = data.questions;
@@ -413,21 +411,6 @@ export async function shareParentResult() {
   }
 }
 
-export async function copyParentResultLink() {
-  setStatus("share-message", "Préparation du lien...", "");
-  $("copy-parent-link-btn").disabled = true;
-
-  try {
-    const shareToken = await ensureParentShareToken();
-    await copyText(buildParentResultUrl(shareToken));
-    setStatus("share-message", "Lien du bilan copié.", "success");
-  } catch (error) {
-    setStatus("share-message", error.message, "error");
-  } finally {
-    $("copy-parent-link-btn").disabled = false;
-  }
-}
-
 export async function shareChallenge() {
   $("share-challenge-btn").disabled = true;
 
@@ -590,9 +573,6 @@ function bindEvents() {
 
   const shareParentButton = $("share-parent-btn");
   if (shareParentButton) shareParentButton.onclick = shareParentResult;
-
-  const copyParentButton = $("copy-parent-link-btn");
-  if (copyParentButton) copyParentButton.onclick = copyParentResultLink;
 
   const shareChallengeButton = $("share-challenge-btn");
   if (shareChallengeButton) shareChallengeButton.onclick = shareChallenge;

@@ -2,6 +2,7 @@ create extension if not exists pgcrypto;
 
 create table if not exists public.quizzes (
   id uuid primary key default gen_random_uuid(),
+  slug text,
   title text not null,
   week_label text not null,
   level text not null,
@@ -9,6 +10,11 @@ create table if not exists public.quizzes (
   active boolean not null default false,
   created_at timestamptz not null default now()
 );
+
+
+-- Identifiant stable utilisé par le site pour imposer le quiz affiché.
+alter table public.quizzes add column if not exists slug text;
+create unique index if not exists quizzes_slug_unique_idx on public.quizzes (slug) where slug is not null;
 
 create table if not exists public.questions (
   id uuid primary key default gen_random_uuid(),
@@ -163,30 +169,33 @@ alter table public.attempt_answers enable row level security;
 alter table public.attempt_shares enable row level security;
 alter table public.parent_leads enable row level security;
 
--- Quiz de démonstration : inséré une seule fois.
+-- Quiz diagnostic de français 5e : inséré ou actualisé sans dupliquer le quiz.
 do $$
 declare
-  demo_quiz_id uuid;
+  diagnostic_quiz_id uuid;
 begin
-  select id into demo_quiz_id
-  from public.quizzes
-  where title = 'Maths 5e : fractions'
-    and week_label = 'Semaine test'
-    and level = '5e'
-    and subject = 'maths'
-  limit 1;
+  select id into diagnostic_quiz_id from public.quizzes where slug = 'francais-5e-diagnostic' limit 1;
 
-  if demo_quiz_id is null then
-    insert into public.quizzes (title, week_label, level, subject, active)
-    values ('Maths 5e : fractions', 'Semaine test', '5e', 'maths', true)
-    returning id into demo_quiz_id;
-
-    insert into public.questions (quiz_id, prompt, explanation, choices, correct_index, position)
-    values
-      (demo_quiz_id, 'Combien vaut 1/2 + 1/4 ?', 'On écrit 1/2 sous la forme 2/4, puis 2/4 + 1/4 = 3/4.', '["2/6","3/4","1/6","2/4"]'::jsonb, 1, 1),
-      (demo_quiz_id, 'Quelle fraction est égale à 0,5 ?', '0,5 représente une moitié, donc 0,5 = 1/2.', '["1/5","2/5","1/2","5/2"]'::jsonb, 2, 2),
-      (demo_quiz_id, 'Combien vaut 3/4 de 20 ?', 'Un quart de 20 vaut 5, donc trois quarts valent 3 × 5 = 15.', '["5","10","15","18"]'::jsonb, 2, 3),
-      (demo_quiz_id, 'Quelle fraction est la plus grande ?', '2/3 vaut environ 0,67, ce qui est supérieur aux autres propositions.', '["2/3","3/5","1/2","4/9"]'::jsonb, 0, 4),
-      (demo_quiz_id, 'Simplifie 6/8.', 'On divise le numérateur et le dénominateur par 2 : 6/8 = 3/4.', '["3/4","2/3","1/2","6/4"]'::jsonb, 0, 5);
+  if diagnostic_quiz_id is null then
+    insert into public.quizzes (slug, title, week_label, level, subject, active)
+    values ('francais-5e-diagnostic', 'Diagnostic français 5e', 'Compétences essentielles', '5e', 'francais', true)
+    returning id into diagnostic_quiz_id;
+  else
+    update public.quizzes
+    set title = 'Diagnostic français 5e', week_label = 'Compétences essentielles', level = '5e', subject = 'francais', active = true
+    where id = diagnostic_quiz_id;
+    delete from public.questions where quiz_id = diagnostic_quiz_id;
   end if;
+
+  insert into public.questions (quiz_id, prompt, explanation, choices, correct_index, position) values
+    (diagnostic_quiz_id, 'Lis : « Malgré la pluie, Lina poursuit sa route car elle veut arriver avant la nuit. » Pourquoi Lina continue-t-elle ?', 'Le connecteur « car » donne la cause : elle souhaite arriver avant la nuit.', '["Elle aime marcher sous la pluie","Elle veut arriver avant la nuit","Elle s’est perdue","Elle attend quelqu’un"]'::jsonb, 1, 1),
+    (diagnostic_quiz_id, 'Complète : « Les histoires que nous avons ___ étaient passionnantes. »', 'Avec l’auxiliaire avoir, le participe passé s’accorde avec le COD placé avant : « que », qui reprend « les histoires ».', '["lu","lue","lus","lues"]'::jsonb, 3, 2),
+    (diagnostic_quiz_id, 'Dans « Le jeune chevalier avance prudemment », quel mot est un adverbe ?', '« Prudemment » précise la manière dont le chevalier avance : c’est un adverbe.', '["jeune","chevalier","avance","prudemment"]'::jsonb, 3, 3),
+    (diagnostic_quiz_id, 'Choisis la phrase correctement accordée.', 'Le sujet « les portes » est au pluriel : le verbe et l’adjectif attribut s’accordent au pluriel.', '["Les portes semble fermées.","Les portes semblent fermée.","Les portes semblent fermées.","Les portes sembles fermées."]'::jsonb, 2, 4),
+    (diagnostic_quiz_id, 'Complète : « Hier, nous ___ le vieux château. »', 'Au passé composé, le verbe « visiter » se conjugue avec avoir : « nous avons visité ».', '["visitons","avons visité","visiterons","avions visiter"]'::jsonb, 1, 5),
+    (diagnostic_quiz_id, 'Dans « Lorsque le soleil se coucha, les voyageurs installèrent leur camp », quelle action a lieu en premier ?', 'Le coucher du soleil déclenche l’installation du camp : il a lieu en premier.', '["Les voyageurs repartent","Le soleil se couche","Les voyageurs installent le camp","Les voyageurs se réveillent"]'::jsonb, 1, 6),
+    (diagnostic_quiz_id, 'Quel mot est le plus proche de « courageux » ?', '« Vaillant » est un synonyme de « courageux ».', '["craintif","vaillant","silencieux","prudent"]'::jsonb, 1, 7),
+    (diagnostic_quiz_id, 'Complète : « Il faut que tu ___ attentivement la consigne. »', 'Après « il faut que », on emploie le subjonctif présent : « que tu lises ».', '["lis","liras","lises","lirais"]'::jsonb, 2, 8),
+    (diagnostic_quiz_id, 'Quelle phrase contient une proposition subordonnée relative ?', '« qui brillait au loin » complète le nom « phare » et commence par le pronom relatif « qui ».', '["Le phare brillait au loin.","Nous apercevons le phare qui brillait au loin.","Nous apercevons enfin le phare.","Le phare brille et guide les marins."]'::jsonb, 1, 9),
+    (diagnostic_quiz_id, 'Choisis la meilleure ponctuation : « Soudain le garçon cria attention un rocher tombe »', 'Les virgules détachent l’adverbe et l’interpellation ; les deux-points introduisent les paroles annoncées.', '["Soudain le garçon cria attention, un rocher tombe.","Soudain, le garçon cria : « Attention, un rocher tombe ! »","Soudain : le garçon cria, attention un rocher tombe.","Soudain le garçon, cria « Attention » un rocher tombe."]'::jsonb, 1, 10);
 end $$;
